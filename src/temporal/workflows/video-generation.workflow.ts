@@ -15,6 +15,8 @@ const {
   runOutlineStage,
   runNarrationStage,
   runPagesStage,
+  runRenderStage,
+  runMergeStage,
   markStageApproved,
   markStageRejected,
   advanceAfterPlan,
@@ -24,6 +26,8 @@ const {
   runOutlineStage: (input: VideoGenerationInput) => Promise<unknown>;
   runNarrationStage: (input: VideoGenerationInput) => Promise<unknown>;
   runPagesStage: (input: VideoGenerationInput) => Promise<unknown>;
+  runRenderStage: (input: VideoGenerationInput) => Promise<unknown>;
+  runMergeStage: (input: VideoGenerationInput) => Promise<unknown>;
   markStageApproved: (jobId: string, stage: string) => Promise<void>;
   markStageRejected: (
     jobId: string,
@@ -102,6 +106,9 @@ export async function videoGenerationWorkflow(input: VideoGenerationInput) {
 
   await runPagesStage(input);
   await waitForStageApproval('PAGES');
+
+  await runRenderStage(input);
+  await runMergeStage(input);
 
   await markJobCompleted(input.jobId);
 

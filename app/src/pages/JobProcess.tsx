@@ -10,6 +10,7 @@ import type {
   RejectStageResponse,
   Stage,
 } from '@/api/types'
+import AppShell from '@/components/AppShell'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -45,6 +46,14 @@ export default function JobProcessPage() {
   const currentStage = (job?.currentStage || '') as Stage
   const canConfirm =
     job?.status === 'WAITING_APPROVAL' && isConfirmStage(currentStage)
+
+  const finalVideo = useMemo(() => {
+    const videos = artifacts.filter(
+      (a) => String(a.stage) === 'MERGE' && String(a.type) === 'VIDEO',
+    )
+    if (videos.length === 0) return null
+    return videos.reduce((acc, cur) => (cur.version > acc.version ? cur : acc))
+  }, [artifacts])
 
   const latestByStage = useMemo(() => {
     const map = new Map<string, Artifact>()
@@ -153,32 +162,60 @@ export default function JobProcessPage() {
   }, [jobIdSafe, pollMs])
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">制作过程</h1>
-          <p className="mt-1 text-sm text-slate-500">jobId: {jobIdSafe}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline">
-            <Link to="/course/create">新建课程</Link>
-          </Button>
-          <Button asChild variant="outline">
+    <AppShell
+      title="制作过程"
+      subtitle={`jobId: ${jobIdSafe}`}
+      actions={
+        <>
+          <Button asChild variant="outline" size="sm">
             <Link to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts`}>产物列表</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link to="/">返回</Link>
-          </Button>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 md:grid-cols-3">
+      {finalVideo?.blobUrl && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>最终视频</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>MERGE</Badge>
+              <Badge variant="secondary">VIDEO</Badge>
+              <Badge variant="outline">v{finalVideo.version}</Badge>
+            </div>
+
+            <video
+              className="w-full rounded-md border border-slate-200"
+              controls
+              src={finalVideo.blobUrl}
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent('MERGE')}/${finalVideo.version}`}
+                >
+                  打开预览
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <a href={finalVideo.blobUrl} target="_blank" rel="noreferrer">
+                  下载 / 打开
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-3">
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>状态</CardTitle>
@@ -222,7 +259,9 @@ export default function JobProcessPage() {
                   </div>
                   <Textarea
                     value={reason}
-                    onChange={(e) => setReason(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      setReason(e.target.value)
+                    }
                     placeholder="reject reason（可选）"
                     className="min-h-20"
                     disabled={!canConfirm}
@@ -313,6 +352,6 @@ export default function JobProcessPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AppShell>
   )
 }

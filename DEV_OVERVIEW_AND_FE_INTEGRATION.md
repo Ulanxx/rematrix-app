@@ -287,6 +287,145 @@ Response（会尽量等待 DB 状态更新，若超时则返回 timeout=true）�
   - 优先看 worker 日志
   - 当前 `markStageApproved/Rejected` 已使用 `upsert`，可避免 approve 过早导致记录不存在
 
+## 6. 端到端联调与调试指南（推荐）
+
+本节提供一条“能跑起来”的最短路径，并附带常见故障定位方法。
+
+### 6.1 启动顺序（建议严格按顺序）
+
+1) 启动 Temporal Server + Web UI
+
+```bash
+docker compose -f temporal-docker-compose-min.yml up
+```
+
+Web UI：
+
+- http://localhost:8233
+
+2) 安装 Playwright 浏览器（首次需要）
+
+```bash
+pnpm exec playwright install chromium
+```
+
+3) 启动 Temporal Worker
+
+```bash
+pnpm temporal:worker
+```
+
+4) 启动 Nest API Server
+
+```bash
+pnpm start:dev
+```
+
+5) 启动前端（Vite）
+
+```bash
+pnpm -C app dev
+```
+
+前端：
+
+- http://localhost:5173
+
+### 6.2 最短联调路径（从 0 到生成视频）
+
+1) 打开前端：`/course/create`
+2) 上传 `.md` 并点击“创建并开始执行”
+3) 进入 `/jobs/:id/process`
+4) 在确认点依次 **Approve**：
+   - `PLAN`
+   - `NARRATION`
+   - `PAGES`
+5) 通过 `PAGES` 后，Workflow 会继续执行 `RENDER → MERGE`（无 TTS 版本）
+6) 最终视频：
+   - 在 `/jobs/:id/process` 与 `/jobs/:id/artifacts` 页面置顶展示 `MERGE/VIDEO`
+   - 点击预览或下载
+
+### 6.3 如何在 Temporal Web UI 里看执行过程
+
+1) 打开 http://localhost:8233
+2) 使用 WorkflowId 搜索：
+
+- `video-generation-<jobId>`
+
+3) 进入详情页后重点看：
+
+- **History**：信号、Activity 执行/重试、失败原因
+- **Pending Activities**：当前卡在哪个 activity
+- **Task Queue**：是否是 `rematrix-video`
+
+### 6.4 常见故障与快速定位
+
+#### A) Temporal Web UI 打不开/500
+
+- **现象**：打开 `http://localhost:8233` 500，或 Network 中 `/api/v1/cluster-info` 503
+- **原因**：`temporal-web` 没连上 `temporal:7233`
+- **处理**：确保 compose 中 `temporal-web` 使用 `TEMPORAL_ADDRESS=temporal:7233`，并重启容器：
+
+```bash
+docker compose -f temporal-docker-compose-min.yml up -d --force-recreate temporal-web
+```
+
+#### B) Workflow failed：Playwright 浏览器缺失
+
+- **现象**：worker 日志出现
+  - `browserType.launch: Executable doesn't exist ...`
+- **原因**：Playwright 刚安装/升级但本机未下载 Chromium
+- **处理**：
+
+```bash
+pnpm exec playwright install chromium
+```
+
+安装后需要**重启 worker**。
+
+#### C) 前端请求 /jobs 卡住 或 CORS
+
+- **现象**：浏览器 preflight 204，但 POST pending/被拦截
+- **原因**：后端未启用 CORS 或端口/baseUrl 不一致
+- **处理**：
+  - 后端已默认开启 CORS；确认前端 `VITE_API_BASE_URL=http://localhost:3000`
+  - 确认 Nest 监听端口为 3000（或你的 `PORT`）
+
+#### D) Bunny 上传失败（但流程仍可继续）
+
+- **现象**：worker 日志出现 `[bunny] upload ... failed`，artifact 的 `blobUrl` 为 `null`
+- **原因**：Bunny 环境变量不正确或网络问题
+- **处理**：
+  - `content` 仍会写入 DB，前端预览会自动回退到 DB content
+  - 检查 worker 启动日志里打印的 bunny 配置摘要
+
+#### E) Worker 不消费任务 / 阶段不推进
+
+- **现象**：Temporal Web UI 里 workflow 卡住，activities 不执行
+- **原因**：
+  - worker 未启动
+  - `TEMPORAL_TASK_QUEUE` 不一致（应为 `rematrix-video`）
+- **处理**：
+  - 确认 worker 输出：`taskQueue=rematrix-video`
+  - 在 Web UI 里查看 Task Queue
+
+#### F) DB 连接问题
+
+- **现象**：后端接口 pending 或抛错，Prisma 报连接异常
+- **原因**：`DATABASE_URL` 不可用
+- **处理**：
+  - 确认 `.env` 配置正确
+  - 后端启动时若 Prisma 连接失败会直接报错
+
+### 6.5 快速验证清单（建议照着勾）
+
+- [ ] `docker compose -f temporal-docker-compose-min.yml up` 后 8233 可访问
+- [ ] `pnpm temporal:worker` 正常运行，且 taskQueue 为 `rematrix-video`
+- [ ] `pnpm start:dev` 后 API 可访问 `GET /jobs/:id`
+- [ ] 前端 `/course/create` 可创建并 run
+- [ ] `PLAN/NARRATION/PAGES` 可 approve/reject
+- [ ] `PAGES` approve 后生成 `MERGE/VIDEO`，前端可播放/下载
+
 ## 5. 当前边界（未实现）
 
 - STORYBOARD 阶段

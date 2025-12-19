@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import AppShell from '@/components/AppShell'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -15,13 +16,18 @@ export default function HomePage() {
   const canGo = useMemo(() => jobId.trim().length > 0, [jobId])
 
   return (
-    <div className="mx-auto w-full max-w-3xl p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Rematrix</h1>
-        <p className="mt-1 text-sm text-slate-500">最小联调：输入 JobId，查看/预览产物并 approve。</p>
-      </div>
-
-      <div className="grid gap-6">
+    <AppShell
+      title="首页"
+      subtitle="最小联调：输入 JobId，查看/预览产物并 approve。"
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <a href="http://localhost:8233" target="_blank" rel="noreferrer">
+            Temporal Web
+          </a>
+        </Button>
+      }
+    >
+      <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>JWT（localStorage）</CardTitle>
@@ -84,6 +90,6 @@ export default function HomePage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AppShell>
   )
 }

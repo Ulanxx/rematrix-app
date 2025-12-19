@@ -35,6 +35,20 @@ services:
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
 
+  temporal-web:
+    container_name: temporal-web
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_DEFAULT_NAMESPACE=default
+      - TEMPORAL_PERMIT_WRITE_API=true
+    image: temporalio/ui:2.38.0
+    networks:
+      - temporal-network
+    ports:
+      - 8233:8080
+
 networks:
   temporal-network:
     driver: bridge

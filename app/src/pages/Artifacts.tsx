@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { apiClient } from '@/api/client'
 import type { Artifact, GetArtifactsResponse, Stage } from '@/api/types'
+import AppShell from '@/components/AppShell'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -24,6 +25,14 @@ export default function ArtifactsPage() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
 
   const jobIdSafe = jobId || ''
+
+  const finalVideo = useMemo(() => {
+    const videos = artifacts.filter(
+      (a) => String(a.stage) === 'MERGE' && String(a.type) === 'VIDEO',
+    )
+    if (videos.length === 0) return null
+    return videos.reduce((acc, cur) => (cur.version > acc.version ? cur : acc))
+  }, [artifacts])
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
@@ -56,23 +65,51 @@ export default function ArtifactsPage() {
   }, [jobIdSafe])
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Artifacts</h1>
-          <p className="mt-1 text-sm text-slate-500">jobId: {jobIdSafe}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline">
-            <Link to="/">返回</Link>
+    <AppShell
+      title="产物列表"
+      subtitle={`jobId: ${jobIdSafe}`}
+      actions={
+        <>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/jobs/${encodeURIComponent(jobIdSafe)}/process`}>制作过程</Link>
           </Button>
-          <Button type="button" onClick={() => void load()} disabled={loading}>
+          <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             {loading ? '加载中...' : '刷新'}
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
+      {finalVideo?.blobUrl && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>最终视频</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>MERGE</Badge>
+              <Badge variant="secondary">VIDEO</Badge>
+              <Badge variant="outline">v{finalVideo.version}</Badge>
+            </div>
+            <video className="w-full rounded-md border border-slate-200" controls src={finalVideo.blobUrl} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent('MERGE')}/${finalVideo.version}`}
+                >
+                  打开预览
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <a href={finalVideo.blobUrl} target="_blank" rel="noreferrer">
+                  下载 / 打开
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="mt-6">
+      <Card className="mb-6">
         <CardHeader>
           <CardTitle>等待参数（可选）</CardTitle>
         </CardHeader>
@@ -81,13 +118,21 @@ export default function ArtifactsPage() {
             <div className="text-sm text-slate-600">waitForStage</div>
             <Input
               value={String(waitForStage)}
-              onChange={(e) => setWaitForStage(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setWaitForStage(e.target.value)
+              }
               placeholder="OUTLINE"
             />
           </div>
           <div className="space-y-1">
             <div className="text-sm text-slate-600">timeoutMs</div>
-            <Input value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} placeholder="20000" />
+            <Input
+              value={timeoutMs}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setTimeoutMs(e.target.value)
+              }
+              placeholder="20000"
+            />
           </div>
           <div className="flex items-end">
             <Button type="button" onClick={() => void load()} disabled={loading}>
@@ -103,7 +148,7 @@ export default function ArtifactsPage() {
         </div>
       )}
 
-      <div className="mt-6">
+      <div>
         <div className="mb-3 flex items-center gap-2">
           <div className="text-sm text-slate-600">结果</div>
           {timeout ? <Badge variant="outline">timeout</Badge> : <Badge variant="secondary">ok</Badge>}
@@ -147,6 +192,6 @@ export default function ArtifactsPage() {
           )}
         </div>
       </div>
-    </div>
+    </AppShell>
   )
 }

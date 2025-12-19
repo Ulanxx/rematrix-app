@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { apiClient } from '@/api/client'
+import AppShell from '@/components/AppShell'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -83,26 +84,14 @@ export default function CourseCreatePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">创建课程</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            上传 Markdown → 创建 Job → 启动生成流程
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link to="/">返回</Link>
-        </Button>
-      </div>
-
+    <AppShell title="创建课程" subtitle="上传 Markdown → 创建 Job → 启动生成流程">
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>课程素材（Markdown）</CardTitle>
@@ -163,6 +152,6 @@ export default function CourseCreatePage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AppShell>
   )
 }
