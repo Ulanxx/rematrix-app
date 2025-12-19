@@ -1,0 +1,152 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+
+import { apiClient } from '@/api/client'
+import type { Artifact, GetArtifactsResponse, Stage } from '@/api/types'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
+import { Separator } from '@/components/ui/Separator'
+
+function stageLabel(stage: Stage) {
+  return String(stage)
+}
+
+export default function ArtifactsPage() {
+  const { jobId } = useParams()
+  const [waitForStage, setWaitForStage] = useState<Stage>('')
+  const [timeoutMs, setTimeoutMs] = useState('20000')
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [timeout, setTimeout] = useState(false)
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
+
+  const jobIdSafe = jobId || ''
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams()
+    if (waitForStage) params.set('waitForStage', waitForStage)
+    if (timeoutMs) params.set('timeoutMs', timeoutMs)
+    const qs = params.toString()
+    return qs ? `?${qs}` : ''
+  }, [timeoutMs, waitForStage])
+
+  async function load() {
+    if (!jobIdSafe) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiClient.get<GetArtifactsResponse>(
+        `/jobs/${encodeURIComponent(jobIdSafe)}/artifacts${query}`,
+      )
+      setArtifacts(res.artifacts || [])
+      setTimeout(Boolean(res.timeout))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobIdSafe])
+
+  return (
+    <div className="mx-auto w-full max-w-5xl p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Artifacts</h1>
+          <p className="mt-1 text-sm text-slate-500">jobId: {jobIdSafe}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/">返回</Link>
+          </Button>
+          <Button type="button" onClick={() => void load()} disabled={loading}>
+            {loading ? '加载中...' : '刷新'}
+          </Button>
+        </div>
+      </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>等待参数（可选）</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <div className="space-y-1">
+            <div className="text-sm text-slate-600">waitForStage</div>
+            <Input
+              value={String(waitForStage)}
+              onChange={(e) => setWaitForStage(e.target.value)}
+              placeholder="OUTLINE"
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-sm text-slate-600">timeoutMs</div>
+            <Input value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} placeholder="20000" />
+          </div>
+          <div className="flex items-end">
+            <Button type="button" onClick={() => void load()} disabled={loading}>
+              重新拉取
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-6">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="text-sm text-slate-600">结果</div>
+          {timeout ? <Badge variant="outline">timeout</Badge> : <Badge variant="secondary">ok</Badge>}
+        </div>
+
+        <div className="grid gap-4">
+          {artifacts.length === 0 ? (
+            <div className="rounded-md border border-slate-200 p-6 text-sm text-slate-500">暂无 artifacts</div>
+          ) : (
+            artifacts.map((a) => (
+              <Card key={`${a.stage}-${a.type}-${a.version}`}>
+                <CardContent className="pt-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge>{stageLabel(a.stage)}</Badge>
+                    <Badge variant="secondary">{a.type}</Badge>
+                    <Badge variant="outline">v{a.version}</Badge>
+                    {a.blobUrl ? <Badge variant="secondary">blobUrl</Badge> : <Badge variant="outline">no blobUrl</Badge>}
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0 text-sm text-slate-600">
+                      {a.blobUrl ? (
+                        <a className="truncate underline" href={a.blobUrl} target="_blank" rel="noreferrer">
+                          {a.blobUrl}
+                        </a>
+                      ) : (
+                        <span>blobUrl 为空，将使用 DB content 预览</span>
+                      )}
+                    </div>
+                    <Button asChild variant="outline">
+                      <Link
+                        to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent(String(a.stage))}/${a.version}`}
+                      >
+                        预览
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

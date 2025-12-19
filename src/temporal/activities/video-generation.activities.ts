@@ -152,14 +152,165 @@ export async function runOutlineStage(input: VideoGenerationInput) {
   return outline;
 }
 
-export async function markStageApproved(jobId: string, stage: JobStage) {
+export async function runNarrationStage(input: VideoGenerationInput) {
+  await ensureJob(input.jobId);
+
+  const latest = await prisma.artifact.findFirst({
+    where: { jobId: input.jobId, stage: JobStage.NARRATION },
+    orderBy: { version: 'desc' },
+    select: { version: true },
+  });
+  const nextVersion = (latest?.version ?? 0) + 1;
+
+  const narration = {
+    pages: [
+      {
+        page: 1,
+        text: '欢迎来到本课程。',
+      },
+      {
+        page: 2,
+        text: '我们将从 Markdown 输入生成结构化内容。',
+      },
+    ],
+    source: {
+      markdownPreview: input.markdown.slice(0, 200),
+    },
+  };
+
+  let blobUrl: string | null = null;
+  try {
+    const path = `jobs/${input.jobId}/artifacts/NARRATION/v${nextVersion}.json`;
+    const uploaded = await uploadJsonToBunny({ path, json: narration });
+    blobUrl = uploaded.publicUrl ?? uploaded.storageUrl;
+  } catch (err: unknown) {
+    console.error('[bunny] upload narration failed', errorToString(err));
+    blobUrl = null;
+  }
+
+  await prisma.artifact.create({
+    data: {
+      jobId: input.jobId,
+      stage: JobStage.NARRATION,
+      type: ArtifactType.JSON,
+      version: nextVersion,
+      content: narration,
+      blobUrl,
+      createdBy: 'system',
+    },
+  });
+
+  await prisma.approval.upsert({
+    where: {
+      jobId_stage: {
+        jobId: input.jobId,
+        stage: JobStage.NARRATION,
+      },
+    },
+    update: { status: ApprovalStatus.PENDING, comment: null },
+    create: {
+      jobId: input.jobId,
+      stage: JobStage.NARRATION,
+      status: ApprovalStatus.PENDING,
+    },
+  });
+
+  await prisma.job.update({
+    where: { id: input.jobId },
+    data: {
+      currentStage: JobStage.NARRATION,
+      status: JobStatus.WAITING_APPROVAL,
+    },
+  });
+
+  return narration;
+}
+
+export async function runPagesStage(input: VideoGenerationInput) {
+  await ensureJob(input.jobId);
+
+  const latest = await prisma.artifact.findFirst({
+    where: { jobId: input.jobId, stage: JobStage.PAGES },
+    orderBy: { version: 'desc' },
+    select: { version: true },
+  });
+  const nextVersion = (latest?.version ?? 0) + 1;
+
+  const pages = {
+    theme: {
+      primary: '#4285F4',
+      background: '#F8F9FA',
+      text: '#202124',
+    },
+    slides: [
+      {
+        title: '课程标题',
+        bullets: ['要点 1', '要点 2'],
+      },
+      {
+        title: '第二部分',
+        bullets: ['示例 A', '示例 B'],
+      },
+    ],
+  };
+
+  let blobUrl: string | null = null;
+  try {
+    const path = `jobs/${input.jobId}/artifacts/PAGES/v${nextVersion}.json`;
+    const uploaded = await uploadJsonToBunny({ path, json: pages });
+    blobUrl = uploaded.publicUrl ?? uploaded.storageUrl;
+  } catch (err: unknown) {
+    console.error('[bunny] upload pages failed', errorToString(err));
+    blobUrl = null;
+  }
+
+  await prisma.artifact.create({
+    data: {
+      jobId: input.jobId,
+      stage: JobStage.PAGES,
+      type: ArtifactType.JSON,
+      version: nextVersion,
+      content: pages,
+      blobUrl,
+      createdBy: 'system',
+    },
+  });
+
+  await prisma.approval.upsert({
+    where: {
+      jobId_stage: {
+        jobId: input.jobId,
+        stage: JobStage.PAGES,
+      },
+    },
+    update: { status: ApprovalStatus.PENDING, comment: null },
+    create: {
+      jobId: input.jobId,
+      stage: JobStage.PAGES,
+      status: ApprovalStatus.PENDING,
+    },
+  });
+
+  await prisma.job.update({
+    where: { id: input.jobId },
+    data: {
+      currentStage: JobStage.PAGES,
+      status: JobStatus.WAITING_APPROVAL,
+    },
+  });
+
+  return pages;
+}
+
+export async function markStageApproved(jobId: string, stage: string) {
+  const stageEnum = stage as JobStage;
   try {
     await prisma.approval.upsert({
-      where: { jobId_stage: { jobId, stage } },
+      where: { jobId_stage: { jobId, stage: stageEnum } },
       update: { status: ApprovalStatus.APPROVED },
       create: {
         jobId,
-        stage,
+        stage: stageEnum,
         status: ApprovalStatus.APPROVED,
       },
     });
@@ -180,16 +331,17 @@ export async function markStageApproved(jobId: string, stage: JobStage) {
 
 export async function markStageRejected(
   jobId: string,
-  stage: JobStage,
+  stage: string,
   reason?: string,
 ) {
+  const stageEnum = stage as JobStage;
   try {
     await prisma.approval.upsert({
-      where: { jobId_stage: { jobId, stage } },
+      where: { jobId_stage: { jobId, stage: stageEnum } },
       update: { status: ApprovalStatus.REJECTED, comment: reason ?? null },
       create: {
         jobId,
-        stage,
+        stage: stageEnum,
         status: ApprovalStatus.REJECTED,
         comment: reason ?? null,
       },
@@ -215,6 +367,16 @@ export async function advanceAfterPlan(jobId: string) {
     where: { id: jobId },
     data: {
       currentStage: JobStage.OUTLINE,
+    },
+  });
+}
+
+export async function markJobCompleted(jobId: string) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      status: JobStatus.COMPLETED,
+      currentStage: JobStage.DONE,
     },
   });
 }

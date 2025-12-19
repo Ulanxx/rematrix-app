@@ -13,19 +13,25 @@ const rejectStage =
 const {
   runPlanStage,
   runOutlineStage,
+  runNarrationStage,
+  runPagesStage,
   markStageApproved,
   markStageRejected,
   advanceAfterPlan,
+  markJobCompleted,
 } = proxyActivities<{
   runPlanStage: (input: VideoGenerationInput) => Promise<unknown>;
   runOutlineStage: (input: VideoGenerationInput) => Promise<unknown>;
-  markStageApproved: (jobId: string, stage: 'PLAN') => Promise<void>;
+  runNarrationStage: (input: VideoGenerationInput) => Promise<unknown>;
+  runPagesStage: (input: VideoGenerationInput) => Promise<unknown>;
+  markStageApproved: (jobId: string, stage: string) => Promise<void>;
   markStageRejected: (
     jobId: string,
-    stage: 'PLAN',
+    stage: string,
     reason?: string,
   ) => Promise<void>;
   advanceAfterPlan: (jobId: string) => Promise<void>;
+  markJobCompleted: (jobId: string) => Promise<void>;
 }>({
   startToCloseTimeout: '2 minutes',
   retry: {
@@ -34,47 +40,73 @@ const {
 });
 
 export async function videoGenerationWorkflow(input: VideoGenerationInput) {
-  let planApproved = false;
-  let planRejected = false;
-  let rejectedReason: string | undefined;
+  const approved: Record<string, boolean> = {
+    PLAN: false,
+    NARRATION: false,
+    PAGES: false,
+  };
+  const rejected: Record<string, boolean> = {
+    PLAN: false,
+    NARRATION: false,
+    PAGES: false,
+  };
+  const rejectedReason: Record<string, string | undefined> = {
+    PLAN: undefined,
+    NARRATION: undefined,
+    PAGES: undefined,
+  };
 
   setHandler(approveStage, (payload) => {
-    if (payload.stage === 'PLAN') {
-      planApproved = true;
-      planRejected = false;
-      rejectedReason = undefined;
+    if (payload.stage in approved) {
+      approved[payload.stage] = true;
+      rejected[payload.stage] = false;
+      rejectedReason[payload.stage] = undefined;
     }
   });
 
   setHandler(rejectStage, (payload) => {
-    if (payload.stage === 'PLAN') {
-      planApproved = false;
-      planRejected = true;
-      rejectedReason = payload.reason;
+    if (payload.stage in rejected) {
+      approved[payload.stage] = false;
+      rejected[payload.stage] = true;
+      rejectedReason[payload.stage] = payload.reason;
     }
   });
 
-  await runPlanStage(input);
+  async function waitForStageApproval(stage: 'PLAN' | 'NARRATION' | 'PAGES') {
+    while (true) {
+      await condition(
+        () => approved[stage] === true || rejected[stage] === true,
+      );
 
-  while (true) {
-    await condition(() => planApproved === true || planRejected === true);
+      if (rejected[stage]) {
+        await markStageRejected(input.jobId, stage, rejectedReason[stage]);
+        rejected[stage] = false;
+        rejectedReason[stage] = undefined;
+        continue;
+      }
 
-    if (planRejected) {
-      await markStageRejected(input.jobId, 'PLAN', rejectedReason);
-      planRejected = false;
-      rejectedReason = undefined;
-      continue;
+      if (approved[stage]) break;
     }
 
-    if (planApproved) break;
+    await markStageApproved(input.jobId, stage);
   }
 
-  await markStageApproved(input.jobId, 'PLAN');
+  await runPlanStage(input);
+
+  await waitForStageApproval('PLAN');
   await advanceAfterPlan(input.jobId);
   await runOutlineStage(input);
 
+  await runNarrationStage(input);
+  await waitForStageApproval('NARRATION');
+
+  await runPagesStage(input);
+  await waitForStageApproval('PAGES');
+
+  await markJobCompleted(input.jobId);
+
   return {
     jobId: input.jobId,
-    nextStage: 'OUTLINE',
+    nextStage: 'DONE',
   };
 }

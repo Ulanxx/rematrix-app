@@ -80,8 +80,53 @@ export class JobsService {
 
       if (
         approval?.status === ApprovalStatus.APPROVED &&
-        job?.status === JobStatus.RUNNING &&
         job?.currentStage !== (stage as JobStage)
+      ) {
+        return { ok: true, job, approval };
+      }
+
+      await this.sleep(intervalMs);
+    }
+
+    const [job, approval] = await Promise.all([
+      this.prisma.job.findUnique({ where: { id: jobId } }),
+      this.prisma.approval.findUnique({
+        where: {
+          jobId_stage: {
+            jobId,
+            stage: stage as JobStage,
+          },
+        },
+      }),
+    ]);
+
+    return { ok: true, job, approval, timeout: true };
+  }
+
+  async reject(jobId: string, stage: string, reason?: string) {
+    await this.get(jobId);
+    await this.temporal.signalReject({ jobId, stage, reason });
+
+    const startedAt = Date.now();
+    const timeoutMs = 20000;
+    const intervalMs = 200;
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const [job, approval] = await Promise.all([
+        this.prisma.job.findUnique({ where: { id: jobId } }),
+        this.prisma.approval.findUnique({
+          where: {
+            jobId_stage: {
+              jobId,
+              stage: stage as JobStage,
+            },
+          },
+        }),
+      ]);
+
+      if (
+        approval?.status === ApprovalStatus.REJECTED &&
+        job?.status === JobStatus.WAITING_APPROVAL
       ) {
         return { ok: true, job, approval };
       }

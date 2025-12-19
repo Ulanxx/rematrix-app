@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { CreateJobDto } from './dto/create-job.dto';
 import { ApproveJobDto } from './dto/approve-job.dto';
+import { RejectJobDto } from './dto/reject-job.dto';
 import { JobsService } from './jobs.service';
 
 @Controller('jobs')
@@ -27,5 +28,11 @@ export class JobsController {
   async approve(@Param('id') id: string, @Body() dto: ApproveJobDto) {
     const stage = dto.stage ?? 'PLAN';
     return this.jobs.approve(id, stage);
+  }
+
+  @Post(':id/reject')
+  async reject(@Param('id') id: string, @Body() dto: RejectJobDto) {
+    const stage = dto.stage ?? 'PLAN';
+    return await this.jobs.reject(id, stage, dto.reason);
   }
 }

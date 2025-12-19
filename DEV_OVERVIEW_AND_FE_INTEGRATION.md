@@ -1,6 +1,6 @@
 # rematrix-server 开发概览 & 前端联调指南
 
-本文档描述当前阶段（PLAN -> OUTLINE）的后端能力、开发运行方式、环境变量约定、以及前端联调接口与推荐流程。
+本文档描述当前阶段（PLAN -> OUTLINE -> NARRATION -> PAGES）的后端能力、开发运行方式、环境变量约定、以及前端联调接口与推荐流程。
 
 ## 1. 当前阶段能力概览
 
@@ -9,19 +9,22 @@
 - 输入：Markdown 文本
 - Temporal workflow 编排：
   - `PLAN` 阶段：生成 plan artifact（JSON）并创建 approval(PENDING)，Job 进入 `WAITING_APPROVAL`
-  - 等待前端（或调用方）发 `approveStage(PLAN)` signal
-  - 通过后：
-    - 将 approval 标记为 APPROVED
-    - Job 进入 RUNNING
-    - 推进到 `OUTLINE`
+  - 等待前端（或调用方）发 `approveStage(PLAN)` 或 `rejectStage(PLAN)` signal
   - `OUTLINE` 阶段：生成 outline artifact（JSON）
     - 同步上传到 Bunny Storage（如环境变量齐全）
     - 将 URL 写入 `Artifact.blobUrl`
+  - `NARRATION` 阶段：生成 narration artifact（JSON）并创建 approval(PENDING)，Job 进入 `WAITING_APPROVAL`
+  - 等待前端（或调用方）发 `approveStage(NARRATION)` 或 `rejectStage(NARRATION)` signal
+  - `PAGES` 阶段：生成 pages artifact（JSON）并创建 approval(PENDING)，Job 进入 `WAITING_APPROVAL`
+  - 等待前端（或调用方）发 `approveStage(PAGES)` 或 `rejectStage(PAGES)` signal
+  - `DONE`：当前 MVP 直接标记 Job 为 `COMPLETED`（后续会扩展到 TTS/RENDER/MERGE）
 
 ### 1.2 当前输出物（Artifacts）
 
 - `PLAN`：JSON（估算页数/时长/风格/问题列表）
 - `OUTLINE`：JSON（标题/分段/要点） + `blobUrl`（Bunny 公网/存储 URL）
+- `NARRATION`：JSON（按页口播稿）
+- `PAGES`：JSON（页面/主题 DSL 的最小结构）
 
 ### 1.3 当前后端模块
 
@@ -227,6 +230,30 @@ Response:
 }
 ```
 
+#### 4.2.6 拒绝当前阶段（reject）
+
+- **POST** `/jobs/:id/reject`
+
+Request:
+
+```json
+{
+  "stage": "PLAN",
+  "reason": "希望更偏技术讲解"
+}
+```
+
+Response（会尽量等待 DB 状态更新，若超时则返回 timeout=true）：
+
+```json
+{
+  "ok": true,
+  "job": { "id": "...", "status": "WAITING_APPROVAL", "currentStage": "PLAN" },
+  "approval": { "stage": "PLAN", "status": "REJECTED", "comment": "..." },
+  "timeout": false
+}
+```
+
 ### 4.3 推荐联调流程（前端）
 
 1) `POST /jobs` 创建 job，保存 `jobId`
@@ -234,11 +261,17 @@ Response:
 3) 轮询 / 查询：
    - `GET /jobs/:id` 看 `status/currentStage`
    - `GET /jobs/:id/artifacts?waitForStage=PLAN&timeoutMs=...`（可选）拿到 PLAN artifact
-4) 用户在前端确认 plan 后：
-   - `POST /jobs/:id/approve`（stage=PLAN）
-5) 获取 OUTLINE：
-   - `GET /jobs/:id/artifacts?waitForStage=OUTLINE&timeoutMs=20000`
-   - 读取 `OUTLINE` artifact 的 `content` 或通过 `blobUrl` 拉取 JSON（更贴近后续大文件场景）
+4) 用户在前端确认/拒绝：
+   - `POST /jobs/:id/approve`（stage=PLAN/NARRATION/PAGES）
+   - `POST /jobs/:id/reject`（stage=PLAN/NARRATION/PAGES, reason 可选）
+5) 产物获取：
+   - `GET /jobs/:id/artifacts?waitForStage=OUTLINE|NARRATION|PAGES&timeoutMs=20000`
+   - 读取 artifact 的 `content` 或通过 `blobUrl` 拉取 JSON
+
+### 4.5 前端页面联调（新）
+
+- `/course/create`：上传 `.md` 文件并创建 Job，点击“创建并开始执行”后自动跳转到制作过程页
+- `/jobs/:id/process`：制作过程页，轮询 job/artifacts，并在 PLAN/NARRATION/PAGES 阶段提供 approve/reject 面板
 
 ### 4.4 常见问题排查
 
