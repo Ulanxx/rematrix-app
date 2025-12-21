@@ -62,8 +62,10 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  artifacts Artifact[]
-  approvals Approval[]
+  artifacts    Artifact[]
+  approvals    Approval[]
+  chatMessages ChatMessage[]
+  workflowCommands WorkflowCommand[]
 
   @@index([userId])
   @@index([status])
@@ -102,6 +104,38 @@ model Approval {
   updatedAt DateTime @updatedAt
 
   @@unique([jobId, stage])
+  @@index([jobId, status])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  role      String   // 'user' | 'assistant'
+  content   String
+  metadata  Json?    // 用于区分普通消息与 approval_request 等
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+model WorkflowCommand {
+  id        String   @id @default(uuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  command   String   // run, pause, resume, jump-to, modify-stage
+  params    Json?    // 指令参数，如 { stage: "OUTLINE" }
+  status    String   @default("PENDING") // PENDING, EXECUTING, SUCCESS, FAILED
+  result    Json?    // 执行结果
+  error     String?  // 错误信息
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobId, createdAt])
   @@index([jobId, status])
 }
 

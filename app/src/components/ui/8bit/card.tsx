@@ -1,7 +1,10 @@
+import { type VariantProps, cva } from "class-variance-authority";
+
 import { cn } from "@/lib/utils";
 
 import {
   Card as ShadcnCard,
+  CardAction as ShadcnCardAction,
   CardContent as ShadcnCardContent,
   CardDescription as ShadcnCardDescription,
   CardFooter as ShadcnCardFooter,
@@ -9,13 +12,23 @@ import {
   CardTitle as ShadcnCardTitle,
 } from "@/components/ui/card";
 
-import { type CardVariantsProps } from "./card.variants";
-
 import "./styles/retro.css";
+
+export const cardVariants = cva("", {
+  variants: {
+    font: {
+      normal: "",
+      retro: "retro",
+    },
+  },
+  defaultVariants: {
+    font: "retro",
+  },
+});
 
 export interface BitCardProps
   extends React.ComponentProps<"div">,
-    CardVariantsProps {
+    VariantProps<typeof cardVariants> {
   asChild?: boolean;
 }
 
@@ -79,6 +92,17 @@ function CardDescription({ ...props }: BitCardProps) {
   );
 }
 
+function CardAction({ ...props }: BitCardProps) {
+  const { className, font } = props;
+
+  return (
+    <ShadcnCardAction
+      className={cn(font !== "normal" && "retro", className)}
+      {...props}
+    />
+  );
+}
+
 function CardContent({ ...props }: BitCardProps) {
   const { className, font } = props;
 
@@ -107,6 +131,7 @@ export {
   CardHeader,
   CardFooter,
   CardTitle,
+  CardAction,
   CardDescription,
   CardContent,
 };

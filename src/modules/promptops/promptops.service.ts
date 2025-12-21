@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { JobStage } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  StepDefinition,
+  validateStepDefinition,
+} from '../workflow-steps/step-definition.interface';
 
 type StageConfig = {
   id: string;
@@ -228,18 +232,18 @@ export class PromptopsService {
   }
 
   private defaultModel(stage: JobStage) {
-    const defaults: Partial<Record<JobStage, string>> = {
-      PLAN: 'z-ai/glm-4.6v',
-      OUTLINE: 'z-ai/glm-4.6v',
-      STORYBOARD: 'z-ai/glm-4.6v',
-      NARRATION: 'z-ai/glm-4.6v',
-      PAGES: 'z-ai/glm-4.6v',
-      TTS: 'z-ai/glm-4.6v',
-      RENDER: 'z-ai/glm-4.6v',
-      MERGE: 'z-ai/glm-4.6v',
-      DONE: 'z-ai/glm-4.6v',
+    const defaults: Record<JobStage, string> = {
+      PLAN: 'google/gemini-3.0-flash',
+      OUTLINE: 'google/gemini-3.0-flash',
+      STORYBOARD: 'google/gemini-3.0-flash',
+      NARRATION: 'google/gemini-3.0-flash',
+      PAGES: 'google/gemini-3.0-flash',
+      TTS: 'google/gemini-3.0-flash',
+      RENDER: 'google/gemini-3.0-flash',
+      MERGE: 'google/gemini-3.0-flash',
+      DONE: 'google/gemini-3.0-flash',
     };
-    return defaults[stage] ?? 'z-ai/glm-4.6v';
+    return defaults[stage] ?? 'google/gemini-3.0-flash';
   }
 
   private defaultPrompt(stage: JobStage) {
@@ -336,7 +340,7 @@ export class PromptopsService {
           '请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入）。',
       }),
     };
-    return defaults[stage] ?? 'You are a helpful assistant.';
+    return defaults[stage] ?? '你是一名助手。';
   }
 
   async getActiveConfig(stageRaw: string) {
@@ -363,5 +367,212 @@ export class PromptopsService {
     });
 
     return active.activeConfig;
+  }
+
+  /**
+   * 验证 Step 配置的完整性
+   * 支持新的 Step 模块化架构
+   */
+  validateStepConfig(
+    stage: JobStage,
+    config: any,
+  ): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // 基础字段验证
+    if (!config.model || typeof config.model !== 'string') {
+      errors.push('Model is required and must be a string');
+    }
+
+    if (
+      config.temperature !== null &&
+      (typeof config.temperature !== 'number' ||
+        config.temperature < 0 ||
+        config.temperature > 2)
+    ) {
+      errors.push('Temperature must be a number between 0 and 2, or null');
+    }
+
+    if (!config.prompt || typeof config.prompt !== 'string') {
+      errors.push('Prompt is required and must be a string');
+    }
+
+    // 验证 prompt 中包含正确的变量占位符
+    const requiredVariables = this.getRequiredVariablesForStage(stage);
+    const missingVariables = requiredVariables.filter(
+      (variable) => !config.prompt.includes(variable),
+    );
+    if (missingVariables.length > 0) {
+      errors.push(
+        `Prompt must include required variables: ${missingVariables.join(', ')}`,
+      );
+    }
+
+    // 检查是否使用了已弃用的 {{}} 格式
+    if (config.prompt.includes('{{') || config.prompt.includes('}}')) {
+      errors.push('Prompt must use <> format for variables, not {{}} format');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  }
+
+  /**
+   * 获取指定阶段所需的变量列表
+   */
+  private getRequiredVariablesForStage(stage: JobStage): string[] {
+    const variableMap: Record<JobStage, string[]> = {
+      [JobStage.PLAN]: ['<markdown>'],
+      [JobStage.OUTLINE]: ['<markdown>', '<plan_json>'],
+      [JobStage.STORYBOARD]: ['<outline_json>'],
+      [JobStage.NARRATION]: ['<storyboard_json>', '<markdown>'],
+      [JobStage.PAGES]: ['<storyboard_json>', '<narration_json>'],
+      [JobStage.TTS]: ['<narration_json>'],
+      [JobStage.RENDER]: ['<pages_json>'],
+      [JobStage.MERGE]: ['<render_outputs>'],
+      [JobStage.DONE]: ['<job_id>'],
+    };
+
+    return variableMap[stage] || [];
+  }
+
+  /**
+   * 验证 Step 定义与配置的兼容性
+   */
+  validateStepCompatibility(
+    stepDefinition: StepDefinition,
+    config: any,
+  ): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // 验证 Step 定义本身
+    const stepValidation = validateStepDefinition(stepDefinition);
+    if (!stepValidation.isValid) {
+      errors.push(...stepValidation.errors);
+    }
+
+    // 验证配置与 Step 定义的兼容性
+    if (stepDefinition.type === 'AI_GENERATION') {
+      if (!config.model) {
+        errors.push('AI_GENERATION steps require a model configuration');
+      }
+
+      if (!config.prompt) {
+        errors.push('AI_GENERATION steps require a prompt configuration');
+      }
+
+      // 检查模型是否在支持列表中
+      const supportedModels = [
+        'google/gemini-3.0-flash',
+        'anthropic/claude-3.5-sonnet',
+        'openai/gpt-4o',
+        'openai/gpt-4o-mini',
+      ];
+
+      if (config.model && !supportedModels.includes(config.model)) {
+        errors.push(
+          `Model ${config.model} is not in the supported list: ${supportedModels.join(', ')}`,
+        );
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  }
+
+  /**
+   * 获取 Step 配置的完整性报告
+   */
+  getStepConfigReport(stage: JobStage): {
+    stage: JobStage;
+    hasActiveConfig: boolean;
+    configValid: boolean;
+    errors: string[];
+    recommendations: string[];
+  } {
+    const errors: string[] = [];
+    const recommendations: string[] = [];
+
+    // 检查是否有活跃配置
+    const activeConfig = this.getActiveConfig(stage);
+    const hasActiveConfig = !!activeConfig;
+
+    if (!hasActiveConfig) {
+      errors.push('No active configuration found');
+      recommendations.push('Create and publish a configuration for this stage');
+      return {
+        stage,
+        hasActiveConfig: false,
+        configValid: false,
+        errors,
+        recommendations,
+      };
+    }
+
+    // 验证配置
+    const validation = this.validateStepConfig(stage, activeConfig);
+    errors.push(...validation.errors);
+
+    // 生成建议
+    if (validation.isValid) {
+      recommendations.push('Configuration is valid and ready to use');
+    } else {
+      recommendations.push('Fix the validation errors above');
+      recommendations.push(
+        'Consider updating the configuration to include all required variables',
+      );
+    }
+
+    return {
+      stage,
+      hasActiveConfig,
+      configValid: validation.isValid,
+      errors,
+      recommendations,
+    };
+  }
+
+  /**
+   * 批量验证所有阶段的配置
+   */
+  validateAllStageConfigs(): {
+    total: number;
+    valid: number;
+    invalid: number;
+    reports: Array<{
+      stage: JobStage;
+      hasActiveConfig: boolean;
+      configValid: boolean;
+      errors: string[];
+      recommendations: string[];
+    }>;
+  } {
+    const stages: JobStage[] = [
+      JobStage.PLAN,
+      JobStage.OUTLINE,
+      JobStage.STORYBOARD,
+      JobStage.NARRATION,
+      JobStage.PAGES,
+      JobStage.TTS,
+      JobStage.RENDER,
+      JobStage.MERGE,
+      JobStage.DONE,
+    ];
+
+    const reports = stages.map((stage) => this.getStepConfigReport(stage));
+
+    const valid = reports.filter((report) => report.configValid).length;
+    const invalid = reports.length - valid;
+
+    return {
+      total: reports.length,
+      valid,
+      invalid,
+      reports,
+    };
   }
 }

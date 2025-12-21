@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/8bit/card'
-import AppShell from '@/components/AppShell'
 
 import { apiClient } from '@/api/client'
 import type { Job, ListJobsResponse } from '@/api/types'
+import { GlassCard } from '@/components/aceternity/GlassCard'
+import AppShell from '@/components/AppShell'
+import { Badge } from '@/components/ui/Badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
 function statusLabel(job: Job): string {
   if (job.status === 'COMPLETED') return '已完成'
@@ -13,6 +15,14 @@ function statusLabel(job: Job): string {
   if (job.status === 'FAILED') return '失败'
   if (job.status === 'DRAFT') return '草稿'
   return String(job.status)
+}
+
+function statusBadgeVariant(job: Job): 'default' | 'secondary' | 'outline' {
+  if (job.status === 'COMPLETED') return 'default'
+  if (job.status === 'RUNNING') return 'secondary'
+  if (job.status === 'WAITING_APPROVAL') return 'outline'
+  if (job.status === 'FAILED') return 'outline'
+  return 'secondary'
 }
 
 export default function HomePage() {
@@ -52,27 +62,29 @@ export default function HomePage() {
           <div className="text-sm text-slate-600">暂无应用</div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2">
           {jobs.map((job) => (
             <button
               key={job.id}
               type="button"
-              className="text-left"
+              className="text-left transition-transform hover:scale-[1.02]"
               onClick={() => navigate(`/apps/${encodeURIComponent(job.id)}`)}
             >
-              <Card className="transition hover:border-slate-300">
+              <GlassCard className="p-[1px]">
+                <Card className="border-0 bg-transparent text-white">
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between gap-3">
-                      <span className="truncate">{job.id}</span>
-                      <span className="text-xs font-normal text-slate-500">
+                      <span className="truncate font-medium text-white/90">{job.id}</span>
+                      <Badge variant={statusBadgeVariant(job)} className="text-xs">
                         {statusLabel(job)}
-                      </span>
+                      </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm">
+                  <CardContent className="text-sm text-white/60">
                     <div>当前阶段：{String(job.currentStage || '-')}</div>
                   </CardContent>
                 </Card>
+              </GlassCard>
             </button>
           ))}
         </div>

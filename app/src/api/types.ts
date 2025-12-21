@@ -28,6 +28,8 @@ export interface Artifact {
   content: unknown
   blobUrl: string | null
   meta?: Record<string, unknown> | null
+  createdBy?: string | null
+  createdAt?: string
 }
 
 export interface GetArtifactsResponse {
@@ -37,6 +39,19 @@ export interface GetArtifactsResponse {
 
 export interface ApproveStageRequest {
   stage: Stage
+}
+
+export interface ChatMessage {
+  id: string
+  jobId: string
+  role: 'user' | 'assistant'
+  content: string
+  metadata?: Record<string, unknown> | null
+  createdAt: string
+}
+
+export interface ListChatMessagesResponse {
+  messages: ChatMessage[]
 }
 
 export interface RejectStageRequest {

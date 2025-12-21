@@ -1,21 +1,43 @@
+import { type VariantProps, cva } from "class-variance-authority";
+
 import { cn } from "@/lib/utils";
 
 import { Badge as ShadcnBadge } from "@/components/ui/badge";
 
-import { badgeVariants, type BadgeVariantsProps } from "./badge.variants";
+export const badgeVariants = cva("", {
+  variants: {
+    font: {
+      normal: "",
+      retro: "retro",
+    },
+    variant: {
+      default: "border-primary bg-primary",
+      destructive: "border-destructive bg-destructive",
+      outline: "border-background bg-background",
+      secondary: "border-secondary bg-secondary",
+    },
+  },
+  defaultVariants: {
+    variant: "default",
+  },
+});
 
-import "./styles/retro.css";
-
-export interface BitBadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    BadgeVariantsProps {
+export interface BitButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof badgeVariants> {
   asChild?: boolean;
 }
 
-function Badge({ children, variant, className, font }: BitBadgeProps) {
+function Badge({
+  children,
+  className = "",
+  font,
+  variant,
+  ...props
+}: BitButtonProps) {
   const color = badgeVariants({ variant, font });
 
-  const classes = (className || "").split(" ");
+  const classes = className.split(" ");
 
   // visual classes for badge and sidebars
   const visualClasses = classes.filter(
@@ -40,6 +62,7 @@ function Badge({ children, variant, className, font }: BitBadgeProps) {
   return (
     <div className={cn("relative inline-flex items-stretch", containerClasses)}>
       <ShadcnBadge
+        {...props}
         className={cn(
           "h-full",
           "rounded-none",

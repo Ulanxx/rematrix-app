@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApprovalStatus, JobStage, JobStatus } from '@prisma/client';
+import { ChatMessagesService } from '../chat-messages/chat-messages.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TemporalClientService } from '../temporal/temporal-client.service';
 import { CreateJobDto } from './dto/create-job.dto';
@@ -13,6 +14,7 @@ export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly temporal: TemporalClientService,
+    public readonly chatMessages: ChatMessagesService,
   ) {}
 
   private async sleep(ms: number) {
@@ -71,7 +73,8 @@ export class JobsService {
     return this.temporal.startVideoGeneration({ jobId, markdown });
   }
 
-  async approve(jobId: string, stage: string) {
+  async approve(jobId: string, stage: string, comment?: string) {
+    console.log('Approve comment:', comment);
     await this.get(jobId);
     await this.temporal.signalApprove({ jobId, stage });
 
@@ -94,7 +97,7 @@ export class JobsService {
 
       if (
         approval?.status === ApprovalStatus.APPROVED &&
-        job?.currentStage !== (stage as JobStage)
+        job?.status === JobStatus.RUNNING
       ) {
         return { ok: true, job, approval };
       }
@@ -114,10 +117,16 @@ export class JobsService {
       }),
     ]);
 
-    return { ok: true, job, approval, timeout: true };
+    return { ok: false, job, approval, timeout: true };
   }
 
-  async reject(jobId: string, stage: string, reason?: string) {
+  async reject(
+    jobId: string,
+    stage: string,
+    reason?: string,
+    comment?: string,
+  ) {
+    console.log('Reject comment:', comment);
     await this.get(jobId);
     await this.temporal.signalReject({ jobId, stage, reason });
 
@@ -161,5 +170,15 @@ export class JobsService {
     ]);
 
     return { ok: true, job, approval, timeout: true };
+  }
+
+  async canPause(jobId: string): Promise<boolean> {
+    const job = await this.get(jobId);
+    return job.status === JobStatus.RUNNING;
+  }
+
+  async canResume(jobId: string): Promise<boolean> {
+    const job = await this.get(jobId);
+    return job.status === ('PAUSED' as string);
   }
 }
