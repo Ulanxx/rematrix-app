@@ -147,6 +147,7 @@ export class StepRegistryService {
   getStepsInExecutionOrder(): StepDefinition[] {
     const stageOrder: JobStage[] = [
       'PLAN',
+      'THEME_DESIGN',
       'OUTLINE',
       'STORYBOARD',
       'PAGES',
@@ -195,6 +196,7 @@ export class StepRegistryService {
     const errors: string[] = [];
     const stageOrder: JobStage[] = [
       'PLAN',
+      'THEME_DESIGN',
       'OUTLINE',
       'STORYBOARD',
       'PAGES',

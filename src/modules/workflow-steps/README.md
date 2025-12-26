@@ -65,7 +65,7 @@ export const customStep = createStepDefinition({
   
   // AI 配置（仅 AI_GENERATION 类型需要）
   aiConfig: {
-    model: 'z-ai/glm-4.6',
+    model: 'z-ai/glm-4.7',
     
     prompt: '处理 <input> 的提示词',
     schema: z.object({ result: z.string() }),

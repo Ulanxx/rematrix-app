@@ -25,7 +25,12 @@ enum JobStage {
   PLAN
   OUTLINE
   STORYBOARD
+  SCRIPT
+  THEME_DESIGN
   PAGES
+  TTS
+  RENDER
+  MERGE
   DONE
 }
 
@@ -50,6 +55,8 @@ model Job {
   userId       String?
   status       JobStatus @default(DRAFT)
   currentStage JobStage  @default(PLAN)
+  autoMode     Boolean   @default(false)
+  retryCount   Int       @default(0)
 
   config      Json?
   stageStatus Json?
@@ -66,6 +73,7 @@ model Job {
   @@index([userId])
   @@index([status])
   @@index([currentStage])
+  @@index([autoMode])
 }
 
 model Artifact {

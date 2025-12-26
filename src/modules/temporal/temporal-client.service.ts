@@ -43,6 +43,51 @@ export class TemporalClientService {
     return { workflowId, runId: handle.firstExecutionRunId };
   }
 
+  async startStageRetry(params: {
+    jobId: string;
+    stage: string;
+    reason?: string;
+  }): Promise<{ workflowId: string; runId: string }> {
+    const client = await this.getClient();
+    const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? 'rematrix-video';
+
+    const workflowId = `stage-retry-${params.jobId}-${params.stage}-${Date.now()}`;
+
+    const handle = await client.workflow.start('stageRetryWorkflow', {
+      taskQueue,
+      workflowId,
+      args: [params],
+    });
+
+    return { workflowId, runId: handle.firstExecutionRunId };
+  }
+
+  async retryVideoGenerationFromStage(params: {
+    jobId: string;
+    config: CreateJobDto;
+    fromStage: string;
+  }): Promise<{ workflowId: string; runId: string }> {
+    const client = await this.getClient();
+    const taskQueue = process.env.TEMPORAL_TASK_QUEUE ?? 'rematrix-video';
+
+    const workflowId = `video-generation-${params.jobId}`;
+
+    // 转换为工作流期望的格式，包含重试起始阶段
+    const workflowInput = {
+      jobId: params.jobId,
+      config: params.config,
+      retryFromStage: params.fromStage,
+    };
+
+    const handle = await client.workflow.start('videoGenerationWorkflow', {
+      taskQueue,
+      workflowId,
+      args: [workflowInput],
+    });
+
+    return { workflowId, runId: handle.firstExecutionRunId };
+  }
+
   async signalApprove(params: { jobId: string; stage: string }): Promise<void> {
     const client = await this.getClient();
     const workflowId = `video-generation-${params.jobId}`;

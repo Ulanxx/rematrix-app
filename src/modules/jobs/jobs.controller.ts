@@ -7,12 +7,14 @@ import { CreateJobDto } from './dto/create-job.dto';
 import { RejectJobDto } from './dto/reject-job.dto';
 import { JobsService } from './jobs.service';
 import { WorkflowEngineService } from '../workflow-engine/workflow-engine.service';
+import { TemporalClientService } from '../temporal/temporal-client.service';
 
 @Controller('jobs')
 export class JobsController {
   constructor(
     private readonly jobs: JobsService,
     private readonly workflowEngine: WorkflowEngineService,
+    private readonly temporalClient: TemporalClientService,
   ) {}
 
   @Get()
@@ -44,6 +46,35 @@ export class JobsController {
   @Post(':id/reject')
   async reject(@Param('id') id: string, @Body() dto: RejectJobDto) {
     return await this.jobs.reject(id, dto.stage, dto.reason, dto.comment);
+  }
+
+  @Post(':id/retry')
+  async retry(@Param('id') id: string) {
+    return await this.jobs.retry(id);
+  }
+
+  @Post(':id/stages/:stage/rerun')
+  async rerunStage(@Param('id') id: string, @Param('stage') stage: string) {
+    try {
+      // 启动 Temporal 工作流进行重试
+
+      const handle = await this.temporalClient.startStageRetry({
+        jobId: id,
+        stage,
+        reason: '手动重试',
+      });
+
+      return {
+        success: true,
+        workflowId: handle.workflowId,
+        runId: handle.runId,
+        message: `已启动阶段 ${stage} 的重试工作流`,
+      };
+    } catch (error) {
+      throw new Error(
+        `启动重试工作流失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   @Get(':id/chat/sse')
@@ -184,7 +215,7 @@ export class JobsController {
         baseURL: 'https://openrouter.ai/api/v1',
       });
 
-      const model = openai('z-ai/glm-4.6');
+      const model = openai('z-ai/glm-4.7');
 
       const result = streamText({
         model,

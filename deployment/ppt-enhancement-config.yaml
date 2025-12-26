@@ -1,0 +1,459 @@
+# PPT 生成功能增强部署配置
+# 版本: v2.1.0
+# 更新日期: 2024-12-24
+
+# 环境配置
+environment:
+  name: production
+  version: "2.1.0"
+  
+# 数据库迁移配置
+database:
+  migrations:
+    - name: "add_theme_design_stage"
+      file: "prisma/migrations/20241224000000_add_theme_design_stage/migration.sql"
+      description: "添加 THEME_DESIGN 阶段到 JobStage 枚举"
+  
+  # 迁移后验证脚本
+  validation:
+    - script: "scripts/validate-theme-design-migration.js"
+      description: "验证 THEME_DESIGN 阶段是否正确添加"
+
+# 服务配置
+services:
+  # 主题设计服务
+  theme-design:
+    enabled: true
+    module: "ThemeDesignModule"
+    endpoints:
+      - path: "/api/theme-design/themes"
+        method: "GET"
+        description: "获取所有设计主题"
+      - path: "/api/theme-design/themes/{themeId}"
+        method: "GET"
+        description: "获取特定主题详情"
+      - path: "/api/theme-design/preview"
+        method: "POST"
+        description: "生成设计预览"
+      - path: "/api/theme-design/evaluate"
+        method: "POST"
+        description: "评估设计质量"
+      - path: "/api/theme-design/recommend"
+        method: "POST"
+        description: "推荐设计主题"
+    
+    # 缓存配置
+    cache:
+      themeTemplates: "24h"
+      previewImages: "1h"
+      qualityScores: "30m"
+    
+    # 限流配置
+    rateLimit:
+      preview: "10/minute"
+      evaluation: "5/minute"
+      recommendation: "20/minute"
+
+  # PPT 上传服务
+  ppt-upload:
+    enabled: true
+    module: "PptService"
+    
+    # Bunny 云存储配置
+    storage:
+      provider: "bunny"
+      zone: "${BUNNY_STORAGE_ZONE}"
+      hostname: "${BUNNY_STORAGE_HOSTNAME}"
+      accessKey: "${BUNNY_STORAGE_ACCESS_KEY}"
+      publicBaseUrl: "${BUNNY_PUBLIC_BASE_URL}"
+    
+    # 上传配置
+    upload:
+      enabled: true
+      maxSize: "50MB"
+      timeout: 300000
+      retryAttempts: 3
+      retryDelay: 1000
+      pathPrefix: "jobs/{jobId}/ppt"
+    
+    # 安全配置
+    security:
+      tokenExpire: 3600
+      maxDownloads: 1000
+      domainWhitelist: "${PPT_UPLOAD_DOMAIN_WHITELIST}"
+    
+    endpoints:
+      - path: "/api/ppt/upload/status/{jobId}"
+        method: "GET"
+        description: "查询上传状态"
+      - path: "/api/ppt/upload/retry/{jobId}"
+        method: "POST"
+        description: "重试上传"
+      - path: "/api/ppt/download/{jobId}"
+        method: "GET"
+        description: "获取下载链接"
+      - path: "/api/ppt/upload/status/batch"
+        method: "POST"
+        description: "批量查询状态"
+
+# 工作流配置
+workflow:
+  # 新的工作流顺序
+  stageOrder:
+    - "PLAN"
+    - "THEME_DESIGN"
+    - "OUTLINE"
+    - "STORYBOARD"
+    - "PAGES"
+    - "TTS"
+    - "RENDER"
+    - "MERGE"
+    - "DONE"
+  
+  # 步骤依赖关系
+  dependencies:
+    THEME_DESIGN: ["PLAN"]
+    OUTLINE: ["THEME_DESIGN"]
+    STORYBOARD: ["OUTLINE"]
+    PAGES: ["STORYBOARD", "THEME_DESIGN"]
+  
+  # 步骤配置
+  steps:
+    THEME_DESIGN:
+      requiresApproval: true
+      timeoutMs: 180000
+      retryPolicy:
+        maxAttempts: 3
+        backoffMs: 1000
+    
+    PAGES:
+      enhancedMode: true
+      pptUpload: true
+      timeoutMs: 300000
+
+# 现代设计模板配置
+designTemplates:
+  # 玻璃拟态模板
+  glassmorphism:
+    id: "glassmorphism"
+    name: "玻璃拟态"
+    category: "modern"
+    styles:
+      background: "rgba(255, 255, 255, 0.03)"
+      backdropFilter: "blur(10px)"
+      border: "1px solid rgba(255, 255, 255, 0.1)"
+      borderRadius: "16px"
+      boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)"
+    effects: ["glass-effect", "subtle-glow", "backdrop-blur"]
+  
+  # 渐变英雄模板
+  gradient-modern:
+    id: "gradient-modern"
+    name: "现代渐变"
+    category: "modern"
+    styles:
+      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      borderRadius: "20px"
+      boxShadow: "0 20px 40px rgba(102, 126, 234, 0.3)"
+    effects: ["gradient-bg", "color-shift", "depth"]
+  
+  # 科技网格模板
+  tech-grid:
+    id: "tech-grid"
+    name: "科技网格"
+    category: "modern"
+    styles:
+      background: "radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.15) 1px, transparent 0)"
+      backgroundSize: "40px 40px"
+      backdropFilter: "blur(5px)"
+      border: "1px solid rgba(0, 255, 255, 0.3)"
+      borderRadius: "12px"
+    effects: ["tech-grid", "neon-glow", "cyber-punk"]
+  
+  # 霓虹玻璃模板
+  neon-glass:
+    id: "neon-glass"
+    name: "霓虹玻璃"
+    category: "modern"
+    styles:
+      background: "rgba(0, 0, 0, 0.7)"
+      backdropFilter: "blur(20px)"
+      border: "2px solid transparent"
+      borderRadius: "24px"
+      boxShadow: "0 0 40px rgba(255, 0, 255, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.3)"
+    effects: ["neon-border", "glass-reflection", "color-glow"]
+
+# 监控配置
+monitoring:
+  # 指标收集
+  metrics:
+    - name: "ppt_upload_success_rate"
+      description: "PPT 上传成功率"
+      type: "percentage"
+    - name: "theme_design_selection_time"
+      description: "主题设计选择耗时"
+      type: "duration"
+    - name: "design_preview_generation_time"
+      description: "设计预览生成耗时"
+      type: "duration"
+    - name: "storage_usage"
+      description: "存储使用量"
+      type: "bytes"
+  
+  # 告警规则
+  alerts:
+    - name: "ppt_upload_failure_rate_high"
+      condition: "ppt_upload_success_rate < 90%"
+      severity: "warning"
+      action: "notify_admin"
+    - name: "storage_quota_exceeded"
+      condition: "storage_usage > 90%"
+      severity: "critical"
+      action: "cleanup_old_files"
+    - name: "theme_design_slow"
+      condition: "theme_design_selection_time > 60s"
+      severity: "warning"
+      action: "check_performance"
+
+# 性能配置
+performance:
+  # 缓存策略
+  caching:
+    redis:
+      enabled: true
+      ttl:
+        themeTemplates: 86400  # 24小时
+        previewImages: 3600    # 1小时
+        uploadStatus: 300      # 5分钟
+    
+    # CDN 配置
+    cdn:
+      enabled: true
+      cacheControl:
+        html: "public, max-age=3600"
+        css: "public, max-age=86400"
+        js: "public, max-age=86400"
+        images: "public, max-age=604800"
+  
+  # 连接池配置
+  connectionPool:
+    database:
+      min: 5
+      max: 20
+      idleTimeoutMillis: 30000
+    
+    redis:
+      min: 2
+      max: 10
+      idleTimeoutMillis: 30000
+
+# 安全配置
+security:
+  # CORS 配置
+  cors:
+    allowedOrigins: "${ALLOWED_ORIGINS}"
+    allowedMethods: ["GET", "POST", "PUT", "DELETE"]
+    allowedHeaders: ["Content-Type", "Authorization"]
+    maxAge: 86400
+  
+  # 文件上传安全
+  fileUpload:
+    maxFileSize: "50MB"
+    allowedTypes: ["text/html"]
+    scanVirus: true
+    sanitizeContent: true
+  
+  # 访问控制
+  accessControl:
+    rateLimiting:
+      enabled: true
+      windowMs: 60000  # 1分钟
+      maxRequests: 100
+    
+    authentication:
+      required: true
+      jwtSecret: "${JWT_SECRET}"
+      tokenExpire: 3600
+
+# 日志配置
+logging:
+  level: "info"
+  format: "json"
+  
+  # 日志输出
+  outputs:
+    - type: "console"
+      level: "info"
+    - type: "file"
+      path: "/var/log/rematrix/ppt-enhancement.log"
+      level: "debug"
+      maxSize: "100MB"
+      maxFiles: 10
+    - type: "elasticsearch"
+      hosts: "${ELASTICSEARCH_HOSTS}"
+      index: "rematrix-ppt-enhancement"
+      level: "info"
+  
+  # 特殊日志
+  special:
+    - name: "ppt_upload"
+      level: "info"
+      format: "detailed"
+    - name: "theme_design"
+      level: "debug"
+      format: "structured"
+    - name: "design_preview"
+      level: "info"
+      format: "minimal"
+
+# 备份配置
+backup:
+  # 数据库备份
+  database:
+    enabled: true
+    schedule: "0 2 * * *"  # 每天凌晨2点
+    retention: 30  # 保留30天
+    compression: true
+  
+  # 文件备份
+  files:
+    enabled: true
+    schedule: "0 3 * * 0"  # 每周日凌晨3点
+    retention: 90  # 保留90天
+    compression: true
+    include:
+      - "uploads/ppt/*"
+      - "previews/*"
+
+# 部署脚本
+deployment:
+  # 部署前检查
+  preDeploy:
+    - script: "scripts/check-environment.sh"
+      description: "检查环境配置"
+    - script: "scripts/validate-dependencies.sh"
+      description: "验证依赖关系"
+    - script: "scripts/backup-current.sh"
+      description: "备份当前版本"
+  
+  # 数据库迁移
+  migrate:
+    - script: "npx prisma migrate deploy"
+      description: "执行数据库迁移"
+    - script: "scripts/validate-migration.sh"
+      description: "验证迁移结果"
+  
+  # 应用部署
+  deploy:
+    - script: "npm run build"
+      description: "构建应用"
+    - script: "npm run test:integration"
+      description: "运行集成测试"
+    - script: "scripts/deploy-application.sh"
+      description: "部署应用"
+  
+  # 部署后验证
+  postDeploy:
+    - script: "scripts/health-check.sh"
+      description: "健康检查"
+    - script: "scripts/smoke-test.sh"
+      description: "冒烟测试"
+    - script: "scripts/notify-deployment.sh"
+      description: "通知部署完成"
+
+# 回滚配置
+rollback:
+  # 回滚触发条件
+  triggers:
+    - "health_check_failed"
+    - "critical_errors"
+    - "performance_degradation"
+  
+  # 回滚步骤
+  steps:
+    - script: "scripts/stop-application.sh"
+      description: "停止应用"
+    - script: "scripts/restore-backup.sh"
+      description: "恢复备份"
+    - script: "npx prisma migrate rollback"
+      description: "回滚数据库"
+    - script: "scripts/start-application.sh"
+      description: "启动应用"
+    - script: "scripts/verify-rollback.sh"
+      description: "验证回滚"
+
+# 环境变量模板
+environmentVariables:
+  # 数据库配置
+  DATABASE_URL: "${DATABASE_URL}"
+  
+  # Bunny 存储配置
+  BUNNY_STORAGE_ZONE: "${BUNNY_STORAGE_ZONE}"
+  BUNNY_STORAGE_HOSTNAME: "${BUNNY_STORAGE_HOSTNAME}"
+  BUNNY_STORAGE_ACCESS_KEY: "${BUNNY_STORAGE_ACCESS_KEY}"
+  BUNNY_PUBLIC_BASE_URL: "${BUNNY_PUBLIC_BASE_URL}"
+  
+  # PPT 上传配置
+  PPT_UPLOAD_ENABLED: "true"
+  PPT_UPLOAD_MAX_SIZE: "50MB"
+  PPT_UPLOAD_TIMEOUT: "300000"
+  PPT_UPLOAD_RETRY_ATTEMPTS: "3"
+  PPT_UPLOAD_RETRY_DELAY: "1000"
+  
+  # 安全配置
+  JWT_SECRET: "${JWT_SECRET}"
+  ALLOWED_ORIGINS: "${ALLOWED_ORIGINS}"
+  PPT_UPLOAD_DOMAIN_WHITELIST: "${PPT_UPLOAD_DOMAIN_WHITELIST}"
+  
+  # Redis 配置
+  REDIS_URL: "${REDIS_URL}"
+  
+  # 监控配置
+  ELASTICSEARCH_HOSTS: "${ELASTICSEARCH_HOSTS}"
+  
+  # 应用配置
+  NODE_ENV: "production"
+  PORT: "3000"
+
+# 验证清单
+validation:
+  # 功能验证
+  functional:
+    - name: "主题设计步骤"
+      test: "scripts/test-theme-design.sh"
+      description: "验证主题设计功能"
+    - name: "PPT 上传功能"
+      test: "scripts/test-ppt-upload.sh"
+      description: "验证 PPT 上传功能"
+    - name: "现代设计模板"
+      test: "scripts/test-design-templates.sh"
+      description: "验证设计模板功能"
+  
+  # 性能验证
+  performance:
+    - name: "响应时间"
+      threshold: "< 2s"
+      test: "scripts/test-response-time.sh"
+    - name: "并发处理"
+      threshold: "> 100 req/s"
+      test: "scripts/test-concurrency.sh"
+    - name: "内存使用"
+      threshold: "< 512MB"
+      test: "scripts/test-memory-usage.sh"
+  
+  # 安全验证
+  security:
+    - name: "文件上传安全"
+      test: "scripts/test-upload-security.sh"
+    - name: "访问控制"
+      test: "scripts/test-access-control.sh"
+    - name: "数据加密"
+      test: "scripts/test-data-encryption.sh"
+
+# 版本信息
+version:
+  current: "2.1.0"
+  previous: "2.0.0"
+  releaseDate: "2024-12-24"
+  changelog: "docs/CHANGELOG.md"
+  releaseNotes: "RELEASE_NOTES_PPT_ENHANCEMENT.md"

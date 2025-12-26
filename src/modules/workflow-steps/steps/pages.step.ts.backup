@@ -1,0 +1,367 @@
+import { JobStage, ArtifactType } from '@prisma/client';
+import { z } from 'zod';
+import {
+  StepDefinition,
+  createStepDefinition,
+  ExecutionContext,
+} from '../step-definition.interface';
+import { PdfService, PdfGenerationResult } from '../../pdf/pdf.service';
+
+/**
+ * PAGES 阶段的输出 Schema
+ */
+export const pagesOutputSchema = z.object({
+  htmlContent: z.string().min(1), // AI生成的完整HTML内容
+  cssContent: z.string().optional(), // AI生成的CSS样式（可选，可以内联在HTML中）
+  pdfUrl: z.string().optional(), // PDF下载链接
+  pdfGenerated: z.boolean().default(false), // PDF生成状态
+  pdfPath: z.string().optional(), // PDF存储路径
+  pdfFileSize: z.number().optional(), // PDF文件大小
+  metadata: z
+    .object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      pageCount: z.number().optional(),
+      aspectRatio: z.enum(['16:9', 'A4']).default('16:9'),
+      designStyle: z.string().optional(),
+    })
+    .optional(),
+});
+
+/**
+ * PAGES 阶段的输入 Schema
+ */
+export const pagesInputSchema = z.object({
+  storyboard: z.object({
+    pages: z.array(
+      z.object({
+        page: z.number(),
+        visual: z.array(z.string()),
+        narrationHints: z.array(z.string()),
+      }),
+    ),
+  }),
+});
+
+/**
+ * PAGES 阶段的自定义输入准备函数
+ */
+async function preparePagesInput(
+  jobId: string,
+  context: ExecutionContext,
+): Promise<Record<string, unknown>> {
+  if (!context) {
+    throw new Error('Context is required for pages input preparation');
+  }
+
+  const inputData: Record<string, unknown> = {};
+
+  // 获取 STORYBOARD 阶段的输出
+  const storyboardArtifact = await context.prisma.artifact.findFirst({
+    where: {
+      jobId,
+      stage: JobStage.STORYBOARD,
+      type: ArtifactType.JSON,
+    },
+    orderBy: { version: 'desc' },
+    select: { content: true },
+  });
+
+  if (storyboardArtifact?.content) {
+    inputData.storyboard = storyboardArtifact.content;
+  }
+
+  return inputData;
+}
+
+/**
+ * PAGES 阶段的自定义执行函数
+ * AI 生成完整的 HTML 内容后，生成 PDF 文档
+ */
+async function customExecutePagesStep(
+  inputData: Record<string, unknown>,
+  context: ExecutionContext,
+): Promise<Record<string, unknown>> {
+  // 获取 AI 生成的页面数据
+  const pagesData = inputData as {
+    htmlContent: string;
+    cssContent?: string;
+    metadata?: {
+      title?: string;
+      description?: string;
+      pageCount?: number;
+      aspectRatio?: '16:9' | 'A4';
+      designStyle?: string;
+    };
+  };
+
+  // 验证必要字段
+  if (!pagesData.htmlContent) {
+    throw new Error('AI 生成的 HTML 内容不能为空');
+  }
+
+  // 创建 PDF 服务（临时实例）
+  const pdfService = new PdfService();
+
+  try {
+    // 使用 AI 生成的 HTML 内容生成 PDF
+    const pdfResult: PdfGenerationResult = await pdfService.generatePdfFromHtml(
+      pagesData.htmlContent,
+      context.jobId,
+      {
+        format: pagesData.metadata?.aspectRatio || '16:9',
+        orientation: pagesData.metadata?.aspectRatio === '16:9' ? 'landscape' : 'portrait',
+        margin: { top: 10, right: 10, bottom: 10, left: 10 },
+        printBackground: true,
+      },
+    );
+
+    // 验证 PDF 生成结果
+    const isValid = pdfService.validatePdf(pdfResult);
+    if (!isValid) {
+      throw new Error('Generated PDF validation failed');
+    }
+
+    // 返回更新后的数据
+    return {
+      ...pagesData,
+      pdfUrl: pdfResult.pdfUrl,
+      pdfGenerated: true,
+      pdfPath: pdfResult.storagePath,
+      pdfFileSize: pdfResult.fileSize,
+    };
+  } finally {
+    // 清理资源
+    await pdfService.onModuleDestroy();
+  }
+}
+
+/**
+ * PAGES 阶段定义
+ * 根据 STORYBOARD 生成可渲染的页面结构数据，并生成 PDF 文档
+ */
+export const pagesStep: StepDefinition = createStepDefinition({
+  stage: JobStage.PAGES,
+  type: 'AI_GENERATION',
+  name: 'Pages Generation',
+  description: '根据分镜脚本转为可渲染页面数据，并生成 PDF 文档',
+
+  // AI 配置
+  aiConfig: {
+    model: 'z-ai/glm-4.7',
+    temperature: 0.5,
+    prompt: `# role
+你是一名专业的前端开发工程师和PDF生成专家，擅长创建现代化、视觉冲击力强的HTML文档。
+
+---
+
+# context
+你正在执行视频生成流水线的 PAGES 阶段。系统需要你根据分镜脚本生成完整的HTML文档，然后自动转换为PDF。你拥有完全的设计自由度，可以创建任何你想要的视觉效果。
+
+---
+
+# instructions
+根据 <storyboard_json> 生成完整的HTML文档。请发挥你的创意和设计能力：
+
+1. **完全自由设计**: 不使用任何模板，创建独特的视觉设计
+2. **现代化技术**: 使用最新的CSS技术，包括Grid、Flexbox、动画等
+3. **16:9宽屏布局**: 确保内容完美适配16:9比例
+4. **丰富视觉效果**: 包含渐变、阴影、动画、图标等现代元素
+5. **内容扩充**: 根据分镜内容智能扩展，提供更丰富的信息
+
+---
+
+# variables
+- <storyboard_json> 上游 STORYBOARD 阶段 JSON
+
+---
+
+# output_format
+请严格按照以下 JSON 格式输出：
+
+\`\`\`json
+{
+  "htmlContent": "完整的HTML文档，包含内联CSS样式和JavaScript",
+  "metadata": {
+    "title": "文档标题",
+    "description": "文档描述",
+    "pageCount": 页面数量,
+    "aspectRatio": "16:9",
+    "designStyle": "设计风格描述"
+  }
+}
+\`\`\`
+
+---
+
+# html_requirements
+HTML文档必须包含：
+
+1. **DOCTYPE和基本结构**: 完整的HTML5文档结构
+2. **内联CSS**: 所有样式内联在<style>标签中
+3. **响应式设计**: 适配不同屏幕尺寸
+4. **打印优化**: 包含@media print样式
+5. **现代字体**: 使用Google Fonts或其他现代字体
+6. **图标系统**: 可以使用Font Awesome或SVG图标
+7. **动画效果**: CSS动画和过渡效果
+8. **16:9布局**: 使用CSS确保16:9比例
+
+---
+
+# design_guidelines
+- **创意优先**: 发挥你的设计创意，不要拘泥于固定模式
+- **视觉冲击**: 使用大胆的色彩和布局
+- **内容为王**: 确保内容清晰易读，设计服务于内容
+- **技术先进**: 展示现代前端技术的能力
+- **用户体验**: 考虑阅读体验和视觉层次
+
+---
+
+# technical_requirements
+- 使用CSS Grid和Flexbox布局
+- 包含CSS变量管理颜色和间距
+- 使用CSS动画和过渡效果
+- 确保跨浏览器兼容性
+- 优化打印样式
+- 包含适当的语义化HTML标签
+
+---
+
+# quality_requirements
+- HTML结构清晰，语义化标签使用正确
+- CSS代码组织良好，注释充分
+- 视觉设计现代、专业、有创意
+- 内容布局合理，层次分明
+- 动画效果流畅，不影响阅读
+
+现在请根据 <storyboard_json> 生成完整的HTML文档：
+
+---
+
+# output_schema
+请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入）。
+
+---
+
+# constraints
+- 禁止使用 \`{{...}}\` 形式的变量占位符；所有变量必须使用尖括号（例如 \`<storyboard>\`）。
+- 只输出最终产物，禁止输出解释性文字。
+- 严格遵守输出 schema；字段缺失时优先给出空数组/空字符串等安全默认值（除非 schema 禁止）。
+- 主题色彩要协调，符合内容风格。
+- 每页幻灯片要有清晰的标题和要点。
+- 要点数量要适中，一般 3-6 个为宜。
+- 页面数量要与分镜保持一致。
+- PDF 相关字段（pdfUrl、pdfPath、pdfFileSize）将由系统自动填充，无需设置。
+
+---
+
+# self_checklist
+- 输出是否为合法 JSON？
+- 是否包含 schema 规定的所有必需字段？
+- 是否没有出现 \`{{...}}\`？
+- 主题色彩是否合理？
+- 每页是否有标题和要点？
+- 页面数量是否匹配输入？
+- 内容是否适合转换为 PDF 文档？`,
+    tools: undefined,
+    schema: pagesOutputSchema,
+    meta: {
+      category: 'slide_design',
+      complexity: 'medium',
+      estimatedTokens: 1500,
+    },
+  },
+
+  // 输入配置
+  input: {
+    sources: [JobStage.STORYBOARD], // 仅依赖 STORYBOARD 阶段
+    schema: pagesInputSchema,
+    description: 'STORYBOARD 阶段的分镜脚本',
+  },
+
+  // 输出配置
+  output: {
+    type: ArtifactType.JSON,
+    schema: pagesOutputSchema,
+    description:
+      '可渲染的页面结构数据，包含主题、幻灯片内容和现代化设计配置，支持16:9宽屏PDF生成和AI内容扩充',
+  },
+
+  // 执行配置
+  execution: {
+    requiresApproval: true, // PAGES 需要用户审批
+    retryPolicy: {
+      maxAttempts: 3,
+      backoffMs: 1000,
+      maxBackoffMs: 5000,
+    },
+    timeoutMs: 300000, // 5 分钟超时（包含 PDF 生成时间）
+  },
+
+  // 自定义执行函数
+  customExecute: customExecutePagesStep,
+
+  // 自定义输入准备函数
+  customPrepareInput: preparePagesInput,
+
+  // 验证函数
+  validate() {
+    const errors: string[] = [];
+
+    // 验证输出结构的合理性
+    const testOutput = {
+      theme: {
+        primary: '#4285F4',
+        background: '#F8F9FA',
+        text: '#202124',
+      },
+      slides: [
+        {
+          title: '第一页标题',
+          bullets: ['要点1', '要点2', '要点3'],
+        },
+        {
+          title: '第二页标题',
+          bullets: ['要点1', '要点2'],
+        },
+      ],
+    };
+
+    const validation = pagesOutputSchema.safeParse(testOutput);
+    if (!validation.success) {
+      errors.push(
+        `Output schema validation failed: ${validation.error.message}`,
+      );
+    }
+
+    // 验证主题色彩格式
+    const theme = testOutput.theme;
+    const colorRegex = /^#[0-9A-F]{6}$/i;
+    if (!colorRegex.test(theme.primary)) {
+      errors.push('Primary color must be a valid hex color');
+    }
+    if (!colorRegex.test(theme.background)) {
+      errors.push('Background color must be a valid hex color');
+    }
+    if (!colorRegex.test(theme.text)) {
+      errors.push('Text color must be a valid hex color');
+    }
+
+    // 验证幻灯片内容
+    for (const slide of testOutput.slides) {
+      if (slide.bullets.length < 1) {
+        errors.push(`Each slide must have at least one bullet point`);
+      }
+      if (slide.bullets.length > 8) {
+        errors.push(`Each slide should have at most 8 bullet points`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  },
+});
+
+export default pagesStep;

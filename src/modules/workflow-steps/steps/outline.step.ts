@@ -24,12 +24,25 @@ export const outlineOutputSchema = z.object({
  */
 export const outlineInputSchema = z.object({
   originContent: z.string().min(1),
-  plan: z.object({
-    estimatedPages: z.number(),
-    estimatedDurationSec: z.number(),
-    style: z.string(),
-    questions: z.array(z.string()),
-  }),
+  themeDesign: z.union([
+    z.string(),
+    z.object({
+      designTheme: z.string(),
+      colorScheme: z.union([z.string(), z.record(z.string(), z.any())]),
+      typography: z.union([z.string(), z.record(z.string(), z.any())]),
+      layoutStyle: z.union([z.string(), z.record(z.string(), z.any())]),
+      visualEffects: z.union([z.array(z.string()), z.array(z.any())]),
+      customizations: z.record(z.string(), z.any()),
+    }),
+  ]),
+  plan: z
+    .object({
+      estimatedPages: z.number(),
+      estimatedDurationSec: z.number(),
+      style: z.string(),
+      questions: z.array(z.string()),
+    })
+    .optional(),
 });
 
 /**
@@ -51,7 +64,32 @@ async function prepareOutlineInput(
     inputData.originContent = originContent;
   }
 
-  // 获取 PLAN 阶段的输出
+  // 获取 THEME_DESIGN 阶段的输出
+  const themeDesignArtifact = await context.prisma.artifact.findFirst({
+    where: {
+      jobId,
+      stage: JobStage.THEME_DESIGN,
+      type: ArtifactType.JSON,
+    },
+    orderBy: { version: 'desc' },
+    select: { content: true },
+  });
+
+  if (themeDesignArtifact?.content) {
+    inputData.themeDesign = themeDesignArtifact.content;
+  } else {
+    // 如果没有找到 THEME_DESIGN 输出，提供默认的主题设计配置
+    inputData.themeDesign = {
+      designTheme: 'modern-tech',
+      colorScheme: 'blue-gradient',
+      typography: 'modern-sans',
+      layoutStyle: 'glassmorphism',
+      visualEffects: ['glass-effect', 'gradient-bg'],
+      customizations: {},
+    };
+  }
+
+  // 同时获取 PLAN 阶段的输出作为参考
   const planArtifact = await context.prisma.artifact.findFirst({
     where: {
       jobId,
@@ -82,7 +120,7 @@ export const outlineStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.6',
+    model: 'z-ai/glm-4.7',
 
     prompt: `# role
 你是一名资深课程结构化专家，擅长把内容拆成清晰的大纲。
@@ -136,9 +174,9 @@ export const outlineStep: StepDefinition = createStepDefinition({
 
   // 输入配置
   input: {
-    sources: [JobStage.PLAN], // 依赖 PLAN 阶段
+    sources: [JobStage.THEME_DESIGN], // 依赖 THEME_DESIGN 阶段
     schema: outlineInputSchema,
-    description: 'Markdown 文档和 PLAN 阶段的输出',
+    description: 'Markdown 文档和 THEME_DESIGN 阶段的输出',
   },
 
   // 输出配置

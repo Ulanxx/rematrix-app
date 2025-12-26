@@ -134,7 +134,18 @@ export interface RegisteredStep {
  * Step 定义验证 Schema
  */
 export const stepDefinitionSchema = z.object({
-  stage: z.enum(['PLAN', 'OUTLINE', 'STORYBOARD', 'PAGES', 'DONE']),
+  stage: z.enum([
+    'PLAN',
+    'OUTLINE',
+    'STORYBOARD',
+    'SCRIPT',
+    'THEME_DESIGN',
+    'PAGES',
+    'TTS',
+    'RENDER',
+    'MERGE',
+    'DONE',
+  ]),
   type: z.enum(['AI_GENERATION', 'PROCESSING']),
   name: z.string().min(1),
   description: z.string().min(1),
@@ -150,7 +161,18 @@ export const stepDefinitionSchema = z.object({
     .optional(),
   input: z.object({
     sources: z.array(
-      z.enum(['PLAN', 'OUTLINE', 'STORYBOARD', 'PAGES', 'DONE']),
+      z.enum([
+        'PLAN',
+        'OUTLINE',
+        'STORYBOARD',
+        'SCRIPT',
+        'THEME_DESIGN',
+        'PAGES',
+        'TTS',
+        'RENDER',
+        'MERGE',
+        'DONE',
+      ]),
     ),
     schema: z.any(),
     description: z.string().optional(),
@@ -220,7 +242,18 @@ export function validateStepDefinition(
   }
 
   // 验证输入依赖的顺序
-  const stageOrder = ['PLAN', 'OUTLINE', 'STORYBOARD', 'PAGES', 'DONE'];
+  const stageOrder = [
+    'PLAN',
+    'THEME_DESIGN',
+    'OUTLINE',
+    'STORYBOARD',
+    'SCRIPT',
+    'PAGES',
+    'TTS',
+    'RENDER',
+    'MERGE',
+    'DONE',
+  ];
   const currentStageIndex = stageOrder.indexOf(definition.stage);
 
   for (const sourceStage of definition.input.sources) {

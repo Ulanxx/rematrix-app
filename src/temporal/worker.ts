@@ -21,7 +21,7 @@ async function run() {
     connection,
     namespace,
     taskQueue,
-    workflowsPath: require.resolve('./workflows/video-generation.workflow'),
+    workflowsPath: require.resolve('./workflows'),
     activities,
   });
 

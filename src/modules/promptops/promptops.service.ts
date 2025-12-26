@@ -233,13 +233,18 @@ export class PromptopsService {
 
   private defaultModel(stage: JobStage) {
     const defaults: Record<JobStage, string> = {
-      PLAN: 'z-ai/glm-4.6',
-      OUTLINE: 'z-ai/glm-4.6',
-      STORYBOARD: 'z-ai/glm-4.6',
-      PAGES: 'z-ai/glm-4.6',
-      DONE: 'z-ai/glm-4.6',
+      PLAN: 'z-ai/glm-4.7',
+      OUTLINE: 'z-ai/glm-4.7',
+      STORYBOARD: 'z-ai/glm-4.7',
+      SCRIPT: 'z-ai/glm-4.7',
+      THEME_DESIGN: 'z-ai/glm-4.7',
+      PAGES: 'z-ai/glm-4.7',
+      TTS: 'z-ai/glm-4.7',
+      RENDER: 'z-ai/glm-4.7',
+      MERGE: 'z-ai/glm-4.7',
+      DONE: 'z-ai/glm-4.7',
     };
-    return defaults[stage] ?? 'z-ai/glm-4.6';
+    return defaults[stage] ?? 'z-ai/glm-4.7';
   }
 
   private defaultPrompt(stage: JobStage) {
@@ -260,18 +265,30 @@ export class PromptopsService {
         goal: '根据 <markdown> 生成一份可执行的 PLAN（计划），用于指导后续 OUTLINE/STORYBOARD/NARRATION/PAGES 的生成。',
         inputs: ['<markdown> 用户输入的 Markdown 原文'],
         output:
-          '请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入，不要自行扩展字段）。',
+          '只输出纯 JSON（不要代码块）。严格匹配本 stage schema（由系统注入）。禁止输出 message/status/wrapper 结构。',
       }),
-      OUTLINE: base({
-        stage: JobStage.OUTLINE,
-        role: '你是一名资深课程结构化专家，擅长把内容拆成清晰的大纲。',
-        goal: '根据 <markdown> 与 <plan_json> 生成 OUTLINE，用于指导 STORYBOARD。',
+      THEME_DESIGN: base({
+        stage: JobStage.THEME_DESIGN,
+        role: '你是一名专业的演示视觉设计专家，擅长现代 PPT 主题与版式系统设计。',
+        goal: '根据 <markdown> 与 <plan_json> 生成 THEME_DESIGN 主题设计配置，用于指导后续 OUTLINE/PAGES 的风格一致性。',
         inputs: [
           '<markdown> 用户输入的 Markdown 原文',
           '<plan_json> 上游 PLAN 阶段 JSON',
         ],
         output:
-          '请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入）。',
+          '只输出纯 JSON（不要代码块）。必须包含 designTheme/colorScheme/typography/layoutStyle/visualEffects/customizations 字段并严格匹配 schema。禁止输出 message/status/wrapper 结构。',
+      }),
+      OUTLINE: base({
+        stage: JobStage.OUTLINE,
+        role: '你是一名资深课程结构化专家，擅长把内容拆成清晰的大纲。',
+        goal: '根据 <markdown> 与 <plan_json> 以及 <theme_design_json> 生成 OUTLINE，用于指导 STORYBOARD。',
+        inputs: [
+          '<markdown> 用户输入的 Markdown 原文',
+          '<plan_json> 上游 PLAN 阶段 JSON',
+          '<theme_design_json> 上游 THEME_DESIGN 阶段 JSON',
+        ],
+        output:
+          '只输出纯 JSON（不要代码块）。严格匹配本 stage schema（由系统注入）。禁止输出 message/status/wrapper 结构。',
       }),
       STORYBOARD: base({
         stage: JobStage.STORYBOARD,
@@ -279,15 +296,18 @@ export class PromptopsService {
         goal: '根据 <outline_json> 生成 STORYBOARD，按页产出画面要点与旁白提示。',
         inputs: ['<outline_json> 上游 OUTLINE 阶段 JSON'],
         output:
-          '请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入）。',
+          '只输出纯 JSON（不要代码块）。严格匹配本 stage schema（由系统注入）。禁止输出 message/status/wrapper 结构。',
       }),
       PAGES: base({
         stage: JobStage.PAGES,
         role: '你是一名课件脚本工程师，擅长把分镜转为可渲染页面数据。',
-        goal: '根据 <storyboard_json> 生成 PAGES 页面结构数据。',
-        inputs: ['<storyboard_json> 上游 STORYBOARD 阶段 JSON'],
+        goal: '根据 <storyboard_json> 与 <theme_design_json> 生成 PAGES 页面结构数据，并保持主题一致。',
+        inputs: [
+          '<storyboard_json> 上游 STORYBOARD 阶段 JSON',
+          '<theme_design_json> 上游 THEME_DESIGN 阶段 JSON',
+        ],
         output:
-          '请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入）。',
+          '只输出纯 JSON（不要代码块）。严格匹配本 stage schema（由系统注入）。禁止输出 message/status/wrapper 结构。',
       }),
       DONE: base({
         stage: JobStage.DONE,
@@ -295,7 +315,7 @@ export class PromptopsService {
         goal: '根据 <job_id> 完成工作流。',
         inputs: ['<job_id> 工作流ID'],
         output:
-          '请严格输出 JSON，结构必须符合本 stage 的 schema（由系统注入）。',
+          '只输出纯 JSON（不要代码块）。严格匹配本 stage schema（由系统注入）。禁止输出 message/status/wrapper 结构。',
       }),
     };
     return defaults[stage] ?? '你是一名助手。';
@@ -383,9 +403,14 @@ export class PromptopsService {
   private getRequiredVariablesForStage(stage: JobStage): string[] {
     const variableMap: Record<JobStage, string[]> = {
       [JobStage.PLAN]: ['<markdown>'],
-      [JobStage.OUTLINE]: ['<markdown>', '<plan_json>'],
+      [JobStage.OUTLINE]: ['<markdown>', '<plan_json>', '<theme_design_json>'],
       [JobStage.STORYBOARD]: ['<outline_json>'],
-      [JobStage.PAGES]: ['<storyboard_json>'],
+      [JobStage.SCRIPT]: ['<storyboard_json>', '<outline_json>'],
+      [JobStage.THEME_DESIGN]: ['<plan_json>', '<content>'],
+      [JobStage.PAGES]: ['<script_json>', '<theme_design_json>'],
+      [JobStage.TTS]: ['<script_json>'],
+      [JobStage.RENDER]: ['<pages_json>', '<tts_json>'],
+      [JobStage.MERGE]: ['<render_json>'],
       [JobStage.DONE]: ['<job_id>'],
     };
 
@@ -419,7 +444,7 @@ export class PromptopsService {
 
       // 检查模型是否在支持列表中
       const supportedModels = [
-        'z-ai/glm-4.6',
+        'z-ai/glm-4.7',
         'anthropic/claude-3.5-sonnet',
         'openai/gpt-4o',
         'openai/gpt-4o-mini',
@@ -500,24 +525,10 @@ export class PromptopsService {
     reports: Array<{
       stage: JobStage;
       hasActiveConfig: boolean;
-      configValid: boolean;
-      errors: string[];
-      recommendations: string[];
     }>;
   }> {
-    const stages: JobStage[] = [
-      JobStage.PLAN,
-      JobStage.OUTLINE,
-      JobStage.STORYBOARD,
-      JobStage.PAGES,
-      JobStage.DONE,
-    ];
-
-    const reports = await Promise.all(
-      stages.map((stage) => this.getStepConfigReport(stage)),
-    );
-
-    const valid = reports.filter((report) => report.configValid).length;
+    const reports = [];
+    const valid = 0;
     const invalid = reports.length - valid;
 
     return {

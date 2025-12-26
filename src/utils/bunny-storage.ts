@@ -100,6 +100,20 @@ export async function uploadJsonToBunny(params: {
   });
 }
 
+export async function uploadFileToBunny(params: {
+  path: string;
+  buffer: Buffer;
+  contentType?: string;
+  cfg?: BunnyStorageConfig;
+}): Promise<{ path: string; storageUrl: string; publicUrl: string | null }> {
+  return uploadBufferToBunny({
+    path: params.path,
+    contentType: params.contentType || 'application/octet-stream',
+    data: new Uint8Array(params.buffer),
+    cfg: params.cfg,
+  });
+}
+
 export async function deleteFromBunny(params: {
   path: string;
   cfg?: BunnyStorageConfig;

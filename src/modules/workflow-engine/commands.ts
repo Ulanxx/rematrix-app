@@ -73,6 +73,12 @@ export const WORKFLOW_COMMANDS: Record<string, WorkflowCommandDefinition> = {
     ],
     naturalLanguagePatterns: [/修改|modify/],
   },
+  retry: {
+    command: 'retry',
+    description: '重试失败的任务',
+    examples: ['/retry', '重试任务', '重新执行', '请重试'],
+    naturalLanguagePatterns: [/重试|retry|重新执行/],
+  },
 };
 
 export const VALID_STAGES = ['PLAN', 'OUTLINE', 'NARRATION', 'PAGES', 'DONE'];

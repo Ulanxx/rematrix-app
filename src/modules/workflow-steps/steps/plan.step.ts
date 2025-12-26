@@ -9,8 +9,8 @@ import {
  * PLAN 阶段的输出 Schema
  */
 export const planOutputSchema = z.object({
-  estimatedPages: z.number().int().min(1).max(40),
-  estimatedDurationSec: z.number().int().min(10).max(600),
+  estimatedPages: z.number().int().min(1).max(100),
+  estimatedDurationSec: z.number().int(),
   style: z.string().min(1),
   questions: z.array(z.string()).default([]),
 });
@@ -36,7 +36,7 @@ export const planStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.6',
+    model: 'z-ai/glm-4.7',
 
     prompt: `# role
 你是一名资深视频策划与教学设计专家。

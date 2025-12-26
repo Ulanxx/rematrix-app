@@ -51,7 +51,7 @@ TEMPORAL_TASK_QUEUE="rematrix-video"
 
 # AI 服务配置
 OPENROUTER_API_KEY="your-openrouter-api-key"
-AI_MODEL="z-ai/glm-4.6"
+AI_MODEL="z-ai/glm-4.7"
 AI_TEMPERATURE="0.2"
 
 # 存储配置（可选）

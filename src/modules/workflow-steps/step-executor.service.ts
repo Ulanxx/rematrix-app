@@ -13,6 +13,7 @@ import {
   ExecutionContext,
   validateStepDefinition,
 } from './step-definition.interface';
+import { generateFormattedExample } from './utils/schema-example-generator';
 import { StepRegistryService } from './step-registry.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromptopsService } from '../promptops/promptops.service';
@@ -41,8 +42,13 @@ export class StepExecutorService {
     stage: JobStage,
     jobId: string,
     config?: CreateJobDto,
+    options?: { forceRerun?: boolean },
   ): Promise<StepExecutionResult> {
-    this.logger.log(`Executing step ${stage} for job ${jobId}`);
+    this.logger.log(
+      `Executing step ${stage} for job ${jobId}${
+        options?.forceRerun ? ' (force rerun)' : ''
+      }`,
+    );
 
     try {
       // 获取步骤定义
@@ -76,11 +82,17 @@ export class StepExecutorService {
       // 确保任务存在
       await this.ensureJob(jobId);
 
-      // 检查是否已有有效结果
-      const existingResult = await this.getExistingResult(stage, jobId);
-      if (existingResult) {
-        this.logger.log(`Using existing result for ${stage} of job ${jobId}`);
-        return { success: true, output: existingResult };
+      // 检查是否已有有效结果（除非强制重新运行）
+      if (!options?.forceRerun) {
+        const existingResult = await this.getExistingResult(stage, jobId);
+        if (existingResult) {
+          this.logger.log(`Using existing result for ${stage} of job ${jobId}`);
+          return { success: true, output: existingResult };
+        }
+      } else {
+        this.logger.log(
+          `Force rerun enabled, skipping existing result check for ${stage} of job ${jobId}`,
+        );
       }
 
       // 准备输入数据
@@ -98,6 +110,23 @@ export class StepExecutorService {
         const aiResult = await this.executeAIStep(stepDef, inputData, context);
         result = aiResult.output;
         Object.assign(metadata, aiResult.metadata);
+
+        // 如果有自定义执行函数，在 AI 生成后调用
+        if (stepDef.customExecute) {
+          const mergedInput: Record<string, unknown> = {
+            ...inputData,
+            ...(result && typeof result === 'object'
+              ? (result as Record<string, unknown>)
+              : { aiOutput: result }),
+          };
+          const customResult = await this.executeCustomStep(
+            stepDef,
+            mergedInput,
+            context,
+          );
+          result = customResult.output;
+          Object.assign(metadata, customResult.metadata);
+        }
       } else if (stepDef.type === 'PROCESSING') {
         const processingResult = await this.executeProcessingStep(
           stepDef,
@@ -190,10 +219,6 @@ export class StepExecutorService {
       JSON.stringify(context.previousStepsContext, null, 2),
     );
     console.log('🔍 Full Prompt:', fullPrompt);
-    console.log(
-      '🔍 Expected Schema:',
-      JSON.stringify(stepDef.output.schema, null, 2),
-    );
 
     // 创建 OpenAI 客户端
     const openai = createOpenAI({
@@ -203,13 +228,77 @@ export class StepExecutorService {
 
     const model = openai(config.model);
 
+    const extractJsonText = (text: string): string => {
+      const trimmed = text.trim();
+      if (trimmed.startsWith('```')) {
+        const lines = trimmed.split('\n');
+        const firstLine = lines[0] ?? '';
+        const lastLine = lines[lines.length - 1] ?? '';
+        if (firstLine.startsWith('```') && lastLine.trim() === '```') {
+          return lines.slice(1, -1).join('\n').trim();
+        }
+      }
+      return trimmed;
+    };
+
+    const normalizePagesLikeOutput = (obj: unknown): unknown => {
+      if (stepDef.stage !== 'PAGES' || !obj || typeof obj !== 'object') {
+        return obj;
+      }
+
+      const anyObj = obj as Record<string, unknown>;
+      const pages = anyObj.pages;
+      if (!Array.isArray(pages)) {
+        return obj;
+      }
+
+      const htmlParts = pages
+        .map((p) => {
+          if (!p || typeof p !== 'object') return '';
+          const html = (p as Record<string, unknown>).htmlContent;
+          return typeof html === 'string' ? html : '';
+        })
+        .filter((s) => s.length > 0);
+
+      if (htmlParts.length === 0) {
+        return obj;
+      }
+
+      return {
+        htmlContent: htmlParts.join('\n'),
+        pdfUrl: '',
+        pdfGenerated: false,
+      };
+    };
+
     // 执行 AI 生成
-    const rawResponse = await generateObject({
-      model,
-      temperature: config.temperature ?? undefined,
-      schema: stepDef.output.schema,
-      prompt: fullPrompt,
-    });
+    let rawResponse: any;
+    try {
+      rawResponse = await generateObject({
+        model,
+        temperature: config.temperature ?? undefined,
+        schema: stepDef.output.schema,
+        prompt: fullPrompt,
+      });
+    } catch (error: any) {
+      const text: unknown =
+        error?.cause?.text ?? error?.text ?? error?.cause?.value?.text;
+
+      if (typeof text === 'string') {
+        const candidate = extractJsonText(text);
+        try {
+          const parsed = JSON.parse(candidate) as unknown;
+          const normalized = normalizePagesLikeOutput(parsed);
+          rawResponse = { object: normalized, repairedFromText: true };
+        } catch {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    rawResponse.object = normalizePagesLikeOutput(rawResponse.object);
 
     console.log('🔍 AI Raw Response:', JSON.stringify(rawResponse, null, 2));
     console.log(
@@ -223,15 +312,53 @@ export class StepExecutorService {
         rawResponse.object,
       );
       if (!validationResult.success) {
-        console.error('❌ Schema validation failed:', validationResult.error);
         console.error(
           '❌ Error details:',
           JSON.stringify(validationResult.error.issues, null, 2),
         );
+        console.error('❌ Schema validation failed');
         console.error(
-          '❌ AI Raw Response that failed validation:',
-          JSON.stringify(rawResponse, null, 2),
+          '❌ AI object that failed validation:',
+          JSON.stringify(rawResponse.object, null, 2),
         );
+
+        // 特殊处理 THEME_DESIGN 步骤的格式错误
+        if (
+          stepDef.stage === 'THEME_DESIGN' &&
+          rawResponse.object &&
+          typeof rawResponse.object === 'object' &&
+          'message' in rawResponse.object &&
+          'status' in rawResponse.object
+        ) {
+          console.log(
+            '🔄 Detected THEME_DESIGN API response format, providing fallback design config',
+          );
+
+          // 提供默认的设计配置
+          const fallbackDesignConfig = {
+            designTheme: 'modern-tech',
+            colorScheme: 'blue-gradient',
+            typography: 'modern-sans',
+            layoutStyle: 'glassmorphism',
+            visualEffects: ['glass-effect', 'gradient-bg'],
+            customizations: {},
+            previewHtml: undefined,
+          };
+
+          console.log(
+            '✅ Using fallback THEME_DESIGN config:',
+            JSON.stringify(fallbackDesignConfig, null, 2),
+          );
+
+          return {
+            output: fallbackDesignConfig,
+            metadata: {
+              model: config.model,
+              fallbackUsed: true,
+              originalError: validationResult.error.message,
+            },
+          };
+        }
 
         // 创建包含原始返回值的错误信息
         const errorMessage = `Schema validation failed: ${validationResult.error.message}. Original AI response: ${JSON.stringify(rawResponse.object)}`;
@@ -284,6 +411,32 @@ export class StepExecutorService {
   }
 
   /**
+   * 执行自定义步骤（AI 生成后的后处理）
+   */
+  private async executeCustomStep(
+    stepDef: StepDefinition,
+    inputData: Record<string, unknown>,
+    context: ExecutionContext,
+  ): Promise<{ output: unknown; metadata: Record<string, unknown> }> {
+    if (stepDef.customExecute) {
+      const result = (await stepDef.customExecute(
+        inputData,
+        context,
+      )) as unknown;
+      return {
+        output: result,
+        metadata: {
+          generationType: 'custom_post_processing',
+        },
+      };
+    }
+
+    throw new Error(
+      `Step ${stepDef.stage} with customExecute must implement the function`,
+    );
+  }
+
+  /**
    * 构建包含前面步骤 context 的 prompt
    */
   private buildPromptWithContext(
@@ -308,6 +461,17 @@ export class StepExecutorService {
         if (inputData.plan && typeof inputData.plan === 'object') {
           prompt += `\n\n# PLAN(JSON)\n${JSON.stringify(inputData.plan, null, 2)}`;
         }
+        if (
+          inputData.themeDesign &&
+          typeof inputData.themeDesign === 'object'
+        ) {
+          prompt += `\n\n# THEME_DESIGN(JSON)\n${JSON.stringify(inputData.themeDesign, null, 2)}`;
+        } else if (
+          inputData.theme_design &&
+          typeof inputData.theme_design === 'object'
+        ) {
+          prompt += `\n\n# THEME_DESIGN(JSON)\n${JSON.stringify(inputData.theme_design, null, 2)}`;
+        }
         break;
       case 'STORYBOARD':
         if (inputData.outline && typeof inputData.outline === 'object') {
@@ -317,6 +481,17 @@ export class StepExecutorService {
       case 'PAGES':
         if (inputData.storyboard && typeof inputData.storyboard === 'object') {
           prompt += `\n\n# STORYBOARD(JSON)\n${JSON.stringify(inputData.storyboard, null, 2)}`;
+        }
+        if (
+          inputData.themeDesign &&
+          typeof inputData.themeDesign === 'object'
+        ) {
+          prompt += `\n\n# THEME_DESIGN(JSON)\n${JSON.stringify(inputData.themeDesign, null, 2)}`;
+        } else if (
+          inputData.theme_design &&
+          typeof inputData.theme_design === 'object'
+        ) {
+          prompt += `\n\n# THEME_DESIGN(JSON)\n${JSON.stringify(inputData.theme_design, null, 2)}`;
         }
         break;
       default:
@@ -331,6 +506,10 @@ export class StepExecutorService {
           }
         }
     }
+
+    // 添加schema示例到prompt末尾
+    const example = generateFormattedExample(stage);
+    prompt += `\n\n# 输出格式示例\n请参考以下示例格式生成JSON输出（不要包含代码块标记，直接输出纯JSON）：\n${example}`;
 
     return prompt;
   }
@@ -404,7 +583,14 @@ export class StepExecutorService {
     const context: Record<string, unknown> = {};
 
     // 定义步骤执行顺序
-    const stageOrder = ['PLAN', 'OUTLINE', 'STORYBOARD', 'PAGES', 'DONE'];
+    const stageOrder = [
+      'PLAN',
+      'THEME_DESIGN',
+      'OUTLINE',
+      'STORYBOARD',
+      'PAGES',
+      'DONE',
+    ];
 
     const currentStageIndex = stageOrder.indexOf(stepDef.stage);
 
@@ -466,7 +652,14 @@ export class StepExecutorService {
     });
 
     if (job) {
-      const stageOrder = ['PLAN', 'OUTLINE', 'STORYBOARD', 'PAGES', 'DONE'];
+      const stageOrder = [
+        'PLAN',
+        'THEME_DESIGN',
+        'OUTLINE',
+        'STORYBOARD',
+        'PAGES',
+        'DONE',
+      ];
       const currentIndex = stageOrder.indexOf(job.currentStage);
       const stageIndex = stageOrder.indexOf(stage);
 

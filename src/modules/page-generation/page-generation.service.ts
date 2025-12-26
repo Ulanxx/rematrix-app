@@ -25,7 +25,7 @@ export class PageGenerationService {
     theme?: { primary?: string; background?: string; text?: string };
     context?: string; // 来自 STORYBOARD 和 NARRATION 的上下文
   }): Promise<{ html: string; css: string }> {
-    const model = this.openai('z-ai/glm-4.6');
+    const model = this.openai('z-ai/glm-4.7');
 
     const slideSchema = z.object({
       html: z.string().min(1),
@@ -118,7 +118,7 @@ ${context}`;
     bullets: string[];
     theme?: { primary?: string; background?: string; text?: string };
   }): Promise<{ html: string; css: string }> {
-    const model = this.openai('z-ai/glm-4.6');
+    const model = this.openai('z-ai/glm-4.7');
     const themeColors = {
       primary: params.theme?.primary ?? '#4285F4',
       background: params.theme?.background ?? '#F8F9FA',
@@ -269,7 +269,7 @@ ${context}`;
     theme?: { primary?: string; background?: string; text?: string };
     context?: string;
   }): Promise<{ html: string; css: string }> {
-    const model = this.openai('z-ai/glm-4.6');
+    const model = this.openai('z-ai/glm-4.7');
 
     const layoutSchema = z.object({
       html: z.string().min(1),

@@ -148,6 +148,9 @@ export class WorkflowEngineService {
         case 'modify-stage':
           result = this.handleModifyStage(jobId, params);
           break;
+        case 'retry':
+          result = await this.handleRetry(jobId);
+          break;
         default:
           throw new BadRequestException(`Command not implemented: ${command}`);
       }
@@ -221,8 +224,8 @@ export class WorkflowEngineService {
     this.emitStatusUpdate(
       jobId,
       'RUNNING',
-      job.currentStage || 'PLAN',
-      job.completedStages || [],
+      String(job.currentStage || 'PLAN'),
+      (job.completedStages || []) as string[],
     );
 
     return {
@@ -269,8 +272,8 @@ export class WorkflowEngineService {
     this.emitStatusUpdate(
       jobId,
       'PAUSED',
-      job.currentStage || 'PLAN',
-      job.completedStages || [],
+      String(job.currentStage || 'PLAN'),
+      (job.completedStages || []) as string[],
     );
 
     return {
@@ -329,8 +332,8 @@ export class WorkflowEngineService {
     this.emitStatusUpdate(
       jobId,
       'RUNNING',
-      job.currentStage || 'PLAN',
-      job.completedStages || [],
+      String(job.currentStage || 'PLAN'),
+      (job.completedStages || []) as string[],
     );
 
     return {
@@ -415,6 +418,74 @@ export class WorkflowEngineService {
       success: true,
       message: `Stage ${stage} modified successfully`,
       data: { stage, modifications },
+    };
+  }
+
+  /**
+   * 处理重试指令
+   *
+   * @param jobId - 任务 ID
+   * @returns 执行结果
+   * @throws BadRequestException 当任务不存在或状态不允许重试时抛出
+   */
+  private async handleRetry(jobId: string): Promise<WorkflowCommandResult> {
+    const job = await (this.prisma as any).job.findUnique({
+      where: { id: jobId },
+    });
+
+    if (!job) {
+      throw new BadRequestException('Job not found');
+    }
+
+    if (job.status !== 'FAILED') {
+      throw new BadRequestException(
+        'Cannot retry a job that is not in FAILED status',
+      );
+    }
+
+    // 获取 Job 的 content 配置
+    const config = job.config as {
+      content?: string;
+      style?: string;
+      language?: string;
+    } | null;
+    const content = config?.content;
+
+    if (!content) {
+      throw new BadRequestException('job.config.content is missing');
+    }
+
+    // 确定重试起始阶段
+    const retryFromStage = job.currentStage || 'PLAN';
+
+    // 重置错误状态并重启 Job 执行
+    await (this.prisma as any).job.update({
+      where: { id: jobId },
+      data: {
+        status: 'RUNNING',
+        error: null,
+      },
+    });
+
+    // 从失败阶段重新启动工作流
+    await this.temporal.retryVideoGenerationFromStage({
+      jobId,
+      config: { content, style: config?.style, language: config?.language },
+      fromStage: retryFromStage,
+    });
+
+    // 发射状态更新事件
+    this.emitStatusUpdate(
+      jobId,
+      'RUNNING',
+      String(job.currentStage || 'PLAN'),
+      (job.completedStages || []) as string[],
+    );
+
+    return {
+      success: true,
+      message: `Job retry started from stage: ${retryFromStage}`,
+      data: { status: 'RUNNING', fromStage: retryFromStage },
     };
   }
 
@@ -604,5 +675,206 @@ export class WorkflowEngineService {
     };
 
     this.eventEmitter.emit('workflow.error', event);
+  }
+
+  /**
+   * 检查Job是否为自动模式
+   *
+   * @param jobId - 任务 ID
+   * @returns 是否为自动模式
+   */
+  async isAutoModeJob(jobId: string): Promise<boolean> {
+    const job = await (this.prisma as any).job.findUnique({
+      where: { id: jobId },
+      select: { autoMode: true },
+    });
+
+    return job?.autoMode || false;
+  }
+
+  /**
+   * 自动审批指定阶段（仅适用于自动模式Job）
+   *
+   * @param jobId - 任务 ID
+   * @param stage - 要审批的阶段
+   * @returns 审批结果
+   */
+  async autoApproveStage(
+    jobId: string,
+    stage: string,
+  ): Promise<WorkflowCommandResult> {
+    const isAutoMode = await this.isAutoModeJob(jobId);
+
+    if (!isAutoMode) {
+      return {
+        success: false,
+        message: 'Job is not in auto mode, cannot auto-approve',
+      };
+    }
+
+    try {
+      // 发送自动审批信号到Temporal
+      await this.temporal.signalApprove({ jobId, stage });
+
+      // 记录自动审批日志
+      console.log(`Auto-approved stage ${stage} for job ${jobId}`);
+
+      return {
+        success: true,
+        message: `Stage ${stage} auto-approved successfully`,
+        data: { stage, autoMode: true },
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `Auto-approval failed for stage ${stage}: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
+   * 处理阶段完成时的自动审批逻辑
+   *
+   * @param jobId - 任务 ID
+   * @param stage - 完成的阶段
+   */
+  async handleStageCompletionWithAutoApprove(jobId: string, stage: string) {
+    const isAutoMode = await this.isAutoModeJob(jobId);
+
+    if (isAutoMode) {
+      // 对于自动模式Job，立即自动审批当前阶段
+      await this.autoApproveStage(jobId, stage);
+    }
+  }
+
+  /**
+   * 检查Job是否可以自动重试
+   *
+   * @param jobId - 任务 ID
+   * @returns 是否可以重试
+   */
+  async canAutoRetry(jobId: string): Promise<boolean> {
+    const job = await (this.prisma as any).job.findUnique({
+      where: { id: jobId },
+      select: { autoMode: true, retryCount: true },
+    });
+
+    if (!job?.autoMode) {
+      return false;
+    }
+
+    // 最大重试次数为3
+    return job.retryCount < 3;
+  }
+
+  /**
+   * 自动重试失败的Job
+   *
+   * @param jobId - 任务 ID
+   * @returns 重试结果
+   */
+  async autoRetryJob(jobId: string): Promise<WorkflowCommandResult> {
+    const canRetry = await this.canAutoRetry(jobId);
+
+    if (!canRetry) {
+      return {
+        success: false,
+        message:
+          'Job cannot be auto-retried: not in auto mode or max retries reached',
+      };
+    }
+
+    try {
+      // 增加重试计数
+      await (this.prisma as any).job.update({
+        where: { id: jobId },
+        data: {
+          retryCount: { increment: 1 },
+          error: null, // 清除之前的错误
+        },
+      });
+
+      // 获取Job信息
+      const job = await (this.prisma as any).job.findUnique({
+        where: { id: jobId },
+      });
+
+      // 从失败阶段重新启动工作流
+      const retryFromStage = job?.currentStage || 'PLAN';
+      const config = job?.config as {
+        content?: string;
+        style?: string;
+        language?: string;
+      } | null;
+
+      if (!config?.content) {
+        throw new Error('Job config content is missing');
+      }
+
+      // 重启工作流
+      await this.temporal.retryVideoGenerationFromStage({
+        jobId,
+        config: {
+          content: config.content,
+          style: config?.style,
+          language: config?.language,
+        },
+        fromStage: retryFromStage,
+      });
+
+      console.log(
+        `Auto-retrying job ${jobId} from stage ${retryFromStage}, attempt ${job.retryCount + 1}`,
+      );
+
+      return {
+        success: true,
+        message: `Job auto-retry started from stage: ${retryFromStage}`,
+        data: {
+          status: 'RUNNING',
+          fromStage: retryFromStage,
+          retryCount: job.retryCount + 1,
+        },
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `Auto-retry failed: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
+   * 处理Job失败时的自动重试逻辑
+   *
+   * @param jobId - 任务 ID
+   * @param error - 错误信息
+   */
+  async handleJobFailureWithAutoRetry(jobId: string, error: string) {
+    const canRetry = await this.canAutoRetry(jobId);
+
+    if (canRetry) {
+      console.log(`Auto-retrying failed job ${jobId}: ${error}`);
+      await this.autoRetryJob(jobId);
+    } else {
+      console.log(`Job ${jobId} failed and cannot be retried: ${error}`);
+      // 发射最终失败事件
+      this.emitWorkflowError(jobId, error);
+    }
+  }
+
+  /**
+   * 重置Job重试计数
+   *
+   * @param jobId - 任务 ID
+   */
+  async resetRetryCount(jobId: string) {
+    await (this.prisma as any).job.update({
+      where: { id: jobId },
+      data: { retryCount: 0 },
+    });
   }
 }

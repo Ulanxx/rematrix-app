@@ -69,12 +69,13 @@ export class JobsService {
       data: {
         status: JobStatus.DRAFT,
         currentStage: JobStage.PLAN,
+        autoMode: dto.autoMode || false,
         config: {
           content: dto.content,
           style: dto.style,
           language: dto.language,
         },
-      },
+      } as any,
     });
 
     return job;
@@ -140,7 +141,7 @@ export class JobsService {
    */
   async run(jobId: string) {
     const job = await this.get(jobId);
-    const config = job.config as CreateJobDto | null;
+    const config = job.config as any;
     const content = config?.content;
     if (!content) {
       throw new BadRequestException('job.config.content is missing');
@@ -351,5 +352,34 @@ export class JobsService {
   async canResume(jobId: string): Promise<boolean> {
     const job = await this.get(jobId);
     return job.status === ('PAUSED' as string);
+  }
+
+  /**
+   * 重试失败的任务
+   *
+   * @param jobId - 任务 ID
+   * @returns 重试结果
+   * @throws NotFoundException 当任务不存在时抛出
+   * @throws BadRequestException 当任务状态不为 FAILED 时抛出
+   *
+   * 该方法会：
+   * 1. 验证任务存在且状态为 FAILED
+   * 2. 调用工作流引擎执行重试指令
+   * 3. 返回重试结果
+   *
+   * @example
+   * ```typescript
+   * const result = await jobsService.retry('job_123');
+   * if (result.success) {
+   *   console.log('任务重试成功');
+   * }
+   * ```
+   */
+  async retry(jobId: string) {
+    await this.get(jobId); // 验证任务存在
+    return await this.workflowEngine.executeCommand({
+      jobId,
+      command: 'retry',
+    });
   }
 }

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import AutoModeIndicator from '@/components/ui/AutoModeIndicator'
 
 type CreateJobResponse = { jobId: string }
 
@@ -24,6 +25,7 @@ export default function CourseCreatePage() {
 
   const [style, setStyle] = useState('')
   const [language, setLanguage] = useState('')
+  const [autoMode, setAutoMode] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +61,7 @@ export default function CourseCreatePage() {
 
       if (style.trim()) payload.style = style.trim()
       if (language.trim()) payload.language = language.trim()
+      if (autoMode) payload.autoMode = autoMode
 
       const created = await apiClient.post<CreateJobResponse>('/jobs', payload)
       await apiClient.post<RunJobResponse>(
@@ -120,6 +123,25 @@ export default function CourseCreatePage() {
               onChange={(e) => setLanguage(e.target.value)}
               placeholder="language（例如 zh-CN）"
             />
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    自动模式
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    开启后将自动审批所有阶段并自动重试失败步骤
+                  </p>
+                </div>
+                <AutoModeIndicator
+                  autoMode={autoMode}
+                  showToggle={true}
+                  onToggle={setAutoMode}
+                  size="md"
+                />
+              </div>
+            </div>
 
             <div className="flex items-center gap-3 pt-2">
               <Button

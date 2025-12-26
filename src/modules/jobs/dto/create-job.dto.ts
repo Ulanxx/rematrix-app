@@ -4,4 +4,6 @@ export class CreateJobDto {
   style?: string;
 
   language?: string;
+
+  autoMode?: boolean;
 }

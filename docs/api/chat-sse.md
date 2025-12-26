@@ -442,7 +442,7 @@ private async handleAIChat(
     baseURL: 'https://openrouter.ai/api/v1',
   });
 
-  const model = openai('z-ai/glm-4.6');
+  const model = openai('z-ai/glm-4.7');
 
   // 3. 启动流式对话
   const result = streamText({

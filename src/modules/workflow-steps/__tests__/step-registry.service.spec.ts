@@ -25,7 +25,7 @@ describe('StepRegistryService', () => {
       name: 'Test Plan Step',
       description: 'Test step for unit testing',
       aiConfig: {
-        model: 'z-ai/glm-4.6',
+        model: 'z-ai/glm-4.7',
 
         prompt: 'Test prompt',
         schema: z.object({ test: z.string() }),
@@ -217,7 +217,7 @@ describe('StepRegistryService', () => {
         name: 'Test Outline Step',
         description: 'Test step',
         aiConfig: {
-          model: 'z-ai/glm-4.6',
+          model: 'z-ai/glm-4.7',
 
           prompt: 'Test prompt',
           schema: z.object({ test: z.string() }),
@@ -260,7 +260,7 @@ describe('StepRegistryService', () => {
         name: 'Test Outline Step',
         description: 'Test step',
         aiConfig: {
-          model: 'z-ai/glm-4.6',
+          model: 'z-ai/glm-4.7',
 
           prompt: 'Test prompt',
           schema: z.object({ test: z.string() }),
@@ -301,7 +301,7 @@ describe('StepRegistryService', () => {
         name: 'Test Outline Step',
         description: 'Test step',
         aiConfig: {
-          model: 'z-ai/glm-4.6',
+          model: 'z-ai/glm-4.7',
 
           prompt: 'Test prompt',
           schema: z.object({ test: z.string() }),
@@ -335,7 +335,7 @@ describe('StepRegistryService', () => {
         name: 'Test Outline Step',
         description: 'Test step',
         aiConfig: {
-          model: 'z-ai/glm-4.6',
+          model: 'z-ai/glm-4.7',
 
           prompt: 'Test prompt',
           schema: z.object({ test: z.string() }),
@@ -368,7 +368,7 @@ describe('StepRegistryService', () => {
         name: 'Invalid Step',
         description: 'Test step',
         aiConfig: {
-          model: 'z-ai/glm-4.6',
+          model: 'z-ai/glm-4.7',
 
           prompt: 'Test prompt',
           schema: z.object({ test: z.string() }),

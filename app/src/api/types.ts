@@ -12,6 +12,8 @@ export interface Job {
   status: JobStatus
   currentStage?: Stage | null
   config?: Record<string, unknown>
+  autoMode?: boolean
+  retryCount?: number
   createdAt?: string
   updatedAt?: string
   error?: string | null
@@ -21,6 +23,7 @@ export interface CreateJobRequest {
   content: string
   style?: string
   language?: string
+  autoMode?: boolean
 }
 
 export interface ListJobsResponse {

@@ -39,7 +39,7 @@ describe('Workflow Steps Integration', () => {
         const configs = {
           [JobStage.PLAN]: {
             id: 'config-plan',
-            model: 'z-ai/glm-4.6',
+            model: 'z-ai/glm-4.7',
 
             prompt: 'Test plan prompt with <markdown>',
             tools: null,
@@ -48,7 +48,7 @@ describe('Workflow Steps Integration', () => {
           },
           [JobStage.OUTLINE]: {
             id: 'config-outline',
-            model: 'z-ai/glm-4.6',
+            model: 'z-ai/glm-4.7',
 
             prompt: 'Test outline prompt <markdown> <plan_json>',
             tools: null,

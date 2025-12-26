@@ -15,9 +15,10 @@ import AppShell from '@/components/AppShell'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
 import { Separator } from '@/components/ui/Separator'
-import { Textarea } from '@/components/ui/Textarea'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import AutoModeIndicator from '@/components/ui/AutoModeIndicator'
 
 type RunJobResponse = {
   workflowId: string
@@ -43,6 +44,7 @@ export default function JobProcessPage() {
   const [reason, setReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [actionResult, setActionResult] = useState<string | null>(null)
+  const [rerunningStage, setRerunningStage] = useState<string | null>(null)
 
   // WebSocket 连接管理
   const {
@@ -54,8 +56,8 @@ export default function JobProcessPage() {
       // 更新 job 状态
       setJob(prev => prev ? { 
         ...prev, 
-        status: data.status as any, 
-        currentStage: data.currentStage as any, 
+        status: data.status, 
+        currentStage: data.currentStage, 
         completedStages: data.completedStages 
       } : null)
       
@@ -67,18 +69,13 @@ export default function JobProcessPage() {
       // 阶段完成时重新加载 artifacts
       void loadOnce()
     },
-    onJobError: (data) => {
-      setError(`Job error: ${data.error}`)
-    },
     onConnectionChange: (connected) => {
       if (!connected) {
-        setError('WebSocket connection lost, may affect real-time updates')
-      } else {
-        setError(null)
+        // setError('WebSocket connection lost, may affect real-time updates')
       }
     },
-    onError: (error) => {
-      // console.error('WebSocket error:', error)
+    onError: () => {
+      // console.error('WebSocket error:')
     },
   })
 
@@ -183,6 +180,43 @@ export default function JobProcessPage() {
     }
   }
 
+  async function retry() {
+    if (!jobIdSafe) return
+    setActionLoading(true)
+    setActionResult(null)
+    setError(null)
+
+    try {
+      const res = await apiClient.post(
+        `/jobs/${encodeURIComponent(jobIdSafe)}/retry`,
+      )
+      setActionResult(JSON.stringify(res, null, 2))
+      await loadOnce()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function rerunStage(stage: string) {
+    if (!jobIdSafe) return
+    setRerunningStage(stage)
+    setError(null)
+
+    try {
+      await apiClient.post(
+        `/jobs/${encodeURIComponent(jobIdSafe)}/stages/${encodeURIComponent(stage)}/rerun`,
+      )
+      setActionResult(`重新生成阶段 ${stage} 成功`)
+      await loadOnce()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRerunningStage(null)
+    }
+  }
+
   // 初始加载 job 和 artifacts
   useEffect(() => {
     if (jobIdSafe) {
@@ -276,6 +310,11 @@ export default function JobProcessPage() {
               <Badge>{job?.status || 'unknown'}</Badge>
               <Badge variant="secondary">{String(currentStage || 'unknown')}</Badge>
               {canConfirm ? <Badge variant="outline">待确认</Badge> : <Badge variant="secondary">进行中</Badge>}
+              <AutoModeIndicator
+                autoMode={job?.autoMode || false}
+                retryCount={job?.retryCount}
+                size="sm"
+              />
               {loading ? <Badge variant="outline">loading</Badge> : <Badge variant="secondary">ok</Badge>}
             </div>
 
@@ -284,7 +323,7 @@ export default function JobProcessPage() {
             <div className="flex flex-wrap items-end gap-3">
               <div className="space-y-1">
                 <div className="text-sm text-slate-600">轮询间隔（ms）</div>
-                <Input value={pollMs} onChange={(e) => setPollMs(e.target.value)} placeholder="1500" />
+                <Input value={pollMs} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPollMs(e.target.value)} placeholder="1500" />
               </div>
 
               <div className="flex items-end gap-2">
@@ -294,6 +333,16 @@ export default function JobProcessPage() {
                 <Button type="button" variant="outline" onClick={() => void run()} disabled={actionLoading}>
                   {actionLoading ? '提交中...' : 'Run'}
                 </Button>
+                {job?.status === 'FAILED' && (
+                  <Button 
+                    type="button" 
+                    variant="destructive" 
+                    onClick={() => void retry()} 
+                    disabled={actionLoading}
+                  >
+                    {actionLoading ? '重试中...' : '重试'}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -345,13 +394,23 @@ export default function JobProcessPage() {
                         <Badge variant="secondary">{latestByStage.get(String(currentStage))?.type}</Badge>
                         <Badge variant="outline">v{latestByStage.get(String(currentStage))?.version}</Badge>
                       </div>
-                      <Button asChild variant="outline">
-                        <Link
-                          to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent(String(currentStage))}/${latestByStage.get(String(currentStage))?.version || 1}`}
+                      <div className="flex gap-2">
+                        <Button asChild variant="outline">
+                          <Link
+                            to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent(String(currentStage))}/${latestByStage.get(String(currentStage))?.version || 1}`}
+                          >
+                            打开预览
+                          </Link>
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => void rerunStage(String(currentStage))}
+                          disabled={rerunningStage === String(currentStage)}
                         >
-                          打开预览
-                        </Link>
-                      </Button>
+                          {rerunningStage === String(currentStage) ? '重试中...' : '重试'}
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-sm text-slate-500">暂无</div>
@@ -394,6 +453,15 @@ export default function JobProcessPage() {
                         >
                           预览
                         </Link>
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="ml-2"
+                        onClick={() => void rerunStage(String(a.stage))}
+                        disabled={rerunningStage === String(a.stage)}
+                      >
+                        {rerunningStage === String(a.stage) ? '重试中...' : '重试'}
                       </Button>
                     </div>
                   </div>

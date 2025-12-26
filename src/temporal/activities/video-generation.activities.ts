@@ -31,6 +31,19 @@ export type VideoGenerationInput = {
   config: CreateJobDto;
 };
 
+export type StageRetryInput = {
+  jobId: string;
+  stage: string;
+  reason?: string;
+};
+
+export type StageRetryOutput = {
+  success: boolean;
+  retryCount: number;
+  artifactIds: string[];
+  error?: string;
+};
+
 export async function ensureJob(jobId: string) {
   await prisma.job.upsert({
     where: { id: jobId },
@@ -111,6 +124,15 @@ export async function runPlanStage(
   return await executeStageWithNewArchitecture(JobStage.PLAN, input);
 }
 
+export async function runThemeDesignStage(
+  input: VideoGenerationInput,
+): Promise<unknown> {
+  console.log(
+    '[Activities] Running THEME_DESIGN stage with new Step architecture',
+  );
+  return await executeStageWithNewArchitecture(JobStage.THEME_DESIGN, input);
+}
+
 export async function runOutlineStage(
   input: VideoGenerationInput,
 ): Promise<unknown> {
@@ -125,6 +147,13 @@ export async function runStoryboardStage(
     '[Activities] Running STORYBOARD stage with new Step architecture',
   );
   return await executeStageWithNewArchitecture(JobStage.STORYBOARD, input);
+}
+
+export async function runScriptStage(
+  input: VideoGenerationInput,
+): Promise<unknown> {
+  console.log('[Activities] Running SCRIPT stage with new Step architecture');
+  return await executeStageWithNewArchitecture(JobStage.SCRIPT, input);
 }
 
 export async function runPagesStage(
@@ -231,6 +260,140 @@ export function advanceAfterNarration() {
 
 export function advanceAfterPages() {
   console.log('[Activities] Advancing after PAGES stage');
+}
+
+// 自动模式支持函数
+export async function checkJobAutoMode(jobId: string): Promise<boolean> {
+  console.log(`[Activities] Checking auto mode for job ${jobId}`);
+
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { autoMode: true },
+  });
+
+  if (!job) {
+    console.warn(`[Activities] Job ${jobId} not found when checking auto mode`);
+    return false;
+  }
+
+  console.log(`[Activities] Job ${jobId} auto mode: ${job.autoMode}`);
+  return job.autoMode || false;
+}
+
+export async function incrementJobRetryCount(jobId: string): Promise<number> {
+  console.log(`[Activities] Incrementing retry count for job ${jobId}`);
+
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { retryCount: true },
+  });
+
+  if (!job) {
+    console.warn(
+      `[Activities] Job ${jobId} not found when incrementing retry count`,
+    );
+    return 0;
+  }
+
+  const newRetryCount = job.retryCount + 1;
+
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { retryCount: newRetryCount },
+  });
+
+  console.log(
+    `[Activities] Job ${jobId} retry count updated to ${newRetryCount}`,
+  );
+  return newRetryCount;
+}
+
+/**
+ * 执行单步重试活动
+ */
+export async function executeStageRetry(
+  jobId: string,
+  stage: string,
+  reason?: string,
+): Promise<StageRetryOutput> {
+  console.log(
+    `[Activities] Starting stage retry for job ${jobId}, stage: ${stage}, reason: ${reason || 'manual retry'}`,
+  );
+  try {
+    // 获取当前任务信息
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: {
+        status: true,
+        currentStage: true,
+        retryCount: true,
+        autoMode: true,
+      },
+    });
+
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    // 更新任务状态为进行中（如果当前是失败状态）
+    if (job.status === JobStatus.FAILED) {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { status: JobStatus.RUNNING },
+      });
+    }
+
+    // 增加重试计数
+    const retryCount = await incrementJobRetryCount(jobId);
+
+    // 使用 StepExecutorService 执行重试
+    await stepExecutorService.execute(stage as JobStage, jobId, undefined, {
+      forceRerun: true,
+    });
+
+    // 获取生成的 artifacts
+    const artifacts = await prisma.artifact.findMany({
+      where: {
+        jobId,
+        stage: stage as JobStage,
+      },
+      select: { id: true },
+      orderBy: { version: 'desc' },
+      take: 10,
+    });
+
+    const artifactIds = artifacts.map((a) => a.id);
+
+    console.log(
+      `[Activities] Stage retry completed for job ${jobId}, stage: ${stage}, artifacts: ${artifactIds.length}`,
+    );
+    return {
+      success: true,
+      retryCount,
+      artifactIds,
+    };
+  } catch (error) {
+    console.error(
+      `[Activities] Stage retry failed for job ${jobId}, stage: ${stage}:`,
+      error,
+    );
+
+    // 更新任务状态为失败
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.FAILED,
+        currentStage: stage as JobStage,
+      },
+    });
+
+    return {
+      success: false,
+      retryCount: 0,
+      artifactIds: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 // 导出服务实例供其他模块使用

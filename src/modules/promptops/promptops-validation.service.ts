@@ -133,11 +133,16 @@ export class PromptopsValidationService {
    */
   private getRequiredPlaceholders(stage: JobStage): string[] {
     const placeholders: Record<JobStage, string[]> = {
-      PLAN: ['<markdown>'],
-      OUTLINE: ['<markdown>', '<plan_json>'],
-      STORYBOARD: ['<outline_json>'],
-      PAGES: ['<storyboard_json>'],
-      DONE: ['<job_id>'],
+      [JobStage.PLAN]: ['<markdown>', '<content>'],
+      [JobStage.THEME_DESIGN]: ['<plan_json>', '<content>'],
+      [JobStage.OUTLINE]: ['<markdown>', '<plan_json>', '<theme_design_json>'],
+      [JobStage.STORYBOARD]: ['<outline_json>'],
+      [JobStage.SCRIPT]: ['<storyboard_json>', '<outline_json>'],
+      [JobStage.PAGES]: ['<script_json>', '<theme_design_json>'],
+      [JobStage.TTS]: ['<script_json>'],
+      [JobStage.RENDER]: ['<pages_json>', '<tts_json>'],
+      [JobStage.MERGE]: ['<render_json>'],
+      [JobStage.DONE]: ['<job_id>'],
     };
 
     return placeholders[stage] || [];
@@ -162,7 +167,14 @@ export class PromptopsValidationService {
       }
 
       let needsUpdate = false;
-      const updates: any = {};
+      const updates: {
+        model?: string;
+        temperature?: number;
+        prompt?: string;
+        tools?: unknown;
+        schema?: unknown;
+        meta?: unknown;
+      } = {};
 
       // 自动修复温度值
       if (

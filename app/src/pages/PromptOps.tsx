@@ -527,7 +527,7 @@ export default function PromptOpsPage() {
                   setDirty(true)
                   setModel(e.target.value)
                 }}
-                placeholder="z-ai/glm-4.6v"
+                placeholder="z-ai/glm-4.7v"
                 disabled={loading}
               />
             </div>
