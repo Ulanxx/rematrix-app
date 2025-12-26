@@ -106,7 +106,14 @@ export interface IconData {
 
 // 形状数据定义
 export interface ShapeData {
-  type: 'rectangle' | 'circle' | 'triangle' | 'line' | 'arrow' | 'star' | 'blob';
+  type:
+    | 'rectangle'
+    | 'circle'
+    | 'triangle'
+    | 'line'
+    | 'arrow'
+    | 'star'
+    | 'blob';
   fill?: string;
   stroke?: string;
   strokeWidth?: number;

@@ -62,7 +62,7 @@ export class PageGenerationService {
   }): string {
     const { title, bullets, theme, context } = params;
 
-    let prompt = `你是一个专业的网页设计师，需要生成一个精美的幻灯片页面。
+    const prompt = `你是一个专业的网页设计师，需要生成一个精美的幻灯片页面。
 
 ## 🎯 核心要求
 **必须使用下面提供的实际标题和内容，严禁使用"演示文稿"、"标题"、"内容"等占位符！**

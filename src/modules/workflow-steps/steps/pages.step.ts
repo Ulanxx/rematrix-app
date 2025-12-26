@@ -10,14 +10,6 @@ import {
   PptSlideData,
   PptGenerationOptions,
 } from '../../ppt/ppt.service';
-import { PptCacheService } from '../../ppt/ppt-cache.service';
-import { HtmlValidatorService } from '../../ppt/html-validator.service';
-import {
-  AiHtmlGeneratorService,
-  StoryboardSlide,
-  GenerationContext,
-  ThemeConfig,
-} from '../../ppt/ai-html-generator.service';
 import {
   PdfMergeService,
   MergeConfig,
@@ -431,78 +423,21 @@ async function customExecutePagesStep(
 
   const config = pagesData.config || { generationMode: 'ppt-enhanced' };
   const isPptMode = config.generationMode === 'ppt-enhanced';
-  const useAiGeneration = config.pptOptions?.useAiGeneration || false;
 
   // 初始化服务
-  const htmlValidator = new HtmlValidatorService();
-  const pptCacheService = new PptCacheService();
-  const aiHtmlGenerator = new AiHtmlGeneratorService(htmlValidator);
-  const pptService = new PptService(aiHtmlGenerator, pptCacheService);
+  const pptService = new PptService();
 
   try {
     // 1. 生成或获取 PPT 幻灯片数据
     let pptSlidesData: PptSlideData[] = [];
     let finalHtmlContent = '';
-    let aiSlideCount = 0;
 
-    if (isPptMode && useAiGeneration && pagesData.script?.pages) {
-      // 使用 AI 生成模式
-      console.log('🤖 使用 AI 生成 PPT HTML...');
-
-      // 转换分镜脚本为 StoryboardSlide 格式
-      const storyboardSlides: StoryboardSlide[] = pagesData.script.pages.map(
-        (page: any, index: number) => ({
-          id: `slide-${index + 1}`,
-          title: page.keyPoints?.[0] || `幻灯片 ${index + 1}`,
-          content: page.keyPoints || [],
-          visualSuggestions: Array.isArray(page.visualSuggestions)
-            ? page.visualSuggestions.join('\n')
-            : page.visualSuggestions || '',
-          slideNumber: page.pageNumber ?? index + 1,
-        }),
-      );
-
-      // 构建生成上下文
-      const generationContext: GenerationContext = {
-        courseTitle: pagesData.script.title || '演示文档',
-        outline: pagesData.script.outline || '',
-        totalSlides: storyboardSlides.length,
-      };
-
-      // 构建主题配置
-      // 这里不强行覆盖 AiHtmlGeneratorService 内部的默认主题（默认 Google 风格 + Google 配色）。
-      // 如果后续希望由 THEME_DESIGN 阶段驱动，可在这里把 themeDesign 映射成 ThemeConfig 再传入。
-      const themeConfig: ThemeConfig | undefined = undefined;
-
-      // 调用 AI 生成
-      const aiResult = await pptService.generatePptWithAi(
-        storyboardSlides,
-        generationContext,
-        {
-          themeConfig,
-          concurrency: config.pptOptions?.aiConcurrency || 3,
-          maxRetries: config.pptOptions?.aiMaxRetries || 2,
-          enableCache: config.pptOptions?.enableCache !== false,
-          uploadToCloud: false,
-        },
-      );
-
-      finalHtmlContent = aiResult.htmlPages.join('\n\n');
-      aiSlideCount =
-        pagesData.script?.pages?.length || aiResult.stats.total || 0;
-
-      console.log(
-        `✅ AI 生成完成: ${aiResult.stats.success}/${aiResult.stats.total} 页成功`,
-      );
-
-      // 注意: AI 生成的是完整 HTML,不需要再通过 generatePptHtml 处理
-      // 但为了兼容性,我们仍然需要 pptSlidesData 用于 PDF 生成
-      // 这里暂时使用空数组,后续可以优化
-      pptSlidesData = [];
-    } else if (isPptMode) {
-      // 使用传统模板生成模式
+    if (isPptMode) {
+      // 优先使用 AI 生成的 pptSlidesData
       if (pagesData.pptSlidesData && pagesData.pptSlidesData.length > 0) {
         pptSlidesData = pagesData.pptSlidesData;
+
+        // 使用 AI 生成的幻灯片数据生成 HTML
         const pptResult = pptService.generatePptHtml(
           pptSlidesData,
           config.pptOptions || {},
@@ -517,7 +452,9 @@ async function customExecutePagesStep(
         pptSlidesData = pptResult.slidesData;
         finalHtmlContent = pptResult.htmlContent;
       } else {
-        throw new Error('PPT 模式下需要 pptSlidesData 或 script 数据');
+        throw new Error(
+          'PPT 模式下需要 AI 生成的 pptSlidesData 或 script 数据',
+        );
       }
     } else {
       // 传统模式：使用原有逻辑
@@ -560,15 +497,14 @@ async function customExecutePagesStep(
       metadata: {
         title: pagesData.script?.pages?.[0]?.keyPoints?.[0] || '演示文档',
         description: `基于脚本生成的${isPptMode ? 'PPT 增强' : '传统'}演示文档`,
-        pageCount:
-          pptSlidesData.length || pagesData.script?.pages?.length || 1,
+        pageCount: pptSlidesData.length || pagesData.script?.pages?.length || 1,
         aspectRatio: config.pptOptions?.aspectRatio || '16:9',
         designStyle: config.pptOptions?.theme || 'modern',
         generationMode: config.generationMode,
         pptTheme: config.pptOptions?.theme,
         mergeStrategy: mergeConfig?.mergeStrategy,
         totalSlides:
-          pptSlidesData.length || aiSlideCount || pagesData.script?.pages?.length || 0,
+          pptSlidesData.length || pagesData.script?.pages?.length || 0,
         mergedPages: mergeConfig
           ? Math.ceil(
               pptSlidesData.length / (mergeConfig.maxSlidesPerPage || 6),
@@ -582,7 +518,7 @@ async function customExecutePagesStep(
       result.pptSlidesData = pptSlidesData;
     }
 
-    return result;
+    return Promise.resolve(result);
   } finally {
     // PDF 合并服务不需要清理资源
   }
@@ -711,76 +647,92 @@ export const pagesStep: StepDefinition = createStepDefinition({
 
 \`\`\`json
 {
-  "pptSlidesData": [
-    {
-      "slideId": "slide-1",
-      "title": "市场增长分析",
-      "subtitle": "2024年度报告",
-      "content": ["关键点1", "关键点2"],
-      "bullets": ["细节1", "细节2"],
-      "design": {
-        "theme": "modern",
-        "colors": {
-          "primary": "#3b82f6",
-          "secondary": "#8b5cf6",
-          "accent": "#06b6d4",
-          "background": "#0f172a",
-          "text": "#f8fafc",
-          "textLight": "#94a3b8"
-        },
-        "typography": {
-          "fontFamily": "Inter, system-ui",
-          "headingFont": "Inter",
-          "bodyFont": "Inter",
-          "baseSize": 16,
-          "headingScale": [3.0, 2.0, 1.5, 1.25, 1.1, 1.0]
-        },
-        "background": {
-          "type": "gradient",
-          "value": "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          "opacity": 1
-        }
-      },
-      "elements": [
-        {
-          "id": "el-1",
-          "type": "text",
-          "position": { "x": 50, "y": 50, "width": 800, "height": 100 },
-          "style": { "fontSize": 48, "fontWeight": "bold", "color": "#f8fafc" },
-          "content": "2024年市场迅猛增长",
-          "zIndex": 10
-        },
-        {
-          "id": "el-2",
-          "type": "chart",
-          "position": { "x": 50, "y": 200, "width": 500, "height": 400 },
-          "style": { "backgroundColor": "rgba(255,255,255,0.05)", "borderRadius": 16, "backdropFilter": "blur(10px)" },
-          "content": {
-            "type": "bar",
-            "labels": ["Jan", "Feb", "Mar", "Apr"],
-            "datasets": [{ "label": "用户数", "data": [100, 200, 400, 800], "backgroundColor": "#3b82f6" }]
-          },
-          "zIndex": 5
-        },
-        {
-          "id": "el-3",
-          "type": "icon",
-          "position": { "x": 600, "y": 200, "width": 64, "height": 64 },
-          "style": {},
-          "content": { "iconName": "lucide:users", "color": "#3b82f6", "size": 64 },
-          "zIndex": 6
-        }
-      ],
-      "metadata": {
-        "slideNumber": 1,
-        "totalSlides": 5
-      }
-    }
-  ],
-  "metadata": {
-    "title": "演示文档",
-    "generationMode": "ppt-enhanced"
-  }
+"pptSlidesData": [
+{
+"slideId": "slide-1",
+"title": "市场增长分析",
+"subtitle": "2024年度报告",
+"content": [],
+"bullets": [],
+"design": {
+"theme": "modern",
+"colors": {
+"primary": "#3b82f6",
+"secondary": "#8b5cf6",
+"accent": "#06b6d4",
+"background": "#0f172a",
+"text": "#f8fafc",
+"textLight": "#94a3b8"
+},
+"typography": {
+"fontFamily": "Inter, system-ui",
+"headingFont": "Inter",
+"bodyFont": "Inter",
+"baseSize": 16,
+"headingScale": [3.0, 2.0, 1.5, 1.25, 1.1, 1.0]
+},
+"background": {
+"type": "gradient",
+"value": "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+"opacity": 1
+}
+},
+"elements": [
+{
+"id": "el-1",
+"type": "text",
+"position": { "x": 50, "y": 50, "width": 800, "height": 100 },
+"style": { "fontSize": 48, "fontWeight": "bold", "color": "#f8fafc" },
+"content": "2024年市场迅猛增长",
+"zIndex": 10
+},
+{
+"id": "el-2",
+"type": "chart",
+"position": { "x": 50, "y": 200, "width": 500, "height": 400 },
+"style": { "backgroundColor": "rgba(255,255,255,0.05)", "borderRadius": 16, "backdropFilter": "blur(10px)" },
+"content": {
+"type": "bar",
+"labels": ["Jan", "Feb", "Mar", "Apr"],
+"datasets": [{ "label": "用户数", "data": [100, 200, 400, 800], "backgroundColor": "#3b82f6" }]
+},
+"zIndex": 5
+},
+{
+"id": "el-3",
+"type": "icon",
+"position": { "x": 600, "y": 200, "width": 64, "height": 64 },
+"style": {},
+"content": { "iconName": "lucide:users", "color": "#3b82f6", "size": 64 },
+"zIndex": 6
+},
+{
+"id": "el-4",
+"type": "shape",
+"position": { "x": 700, "y": 300, "width": 200, "height": 200 },
+"style": { "opacity": 0.3 },
+"content": { "type": "circle", "fill": "#3b82f6" },
+"zIndex": 1
+},
+{
+"id": "el-5",
+"type": "text",
+"position": { "x": 50, "y": 650, "width": 600, "height": 80 },
+"style": { "fontSize": 24, "color": "#94a3b8" },
+"content": "用户增长呈现指数级趋势，月增长率超过 100%",
+"zIndex": 8
+}
+],
+"metadata": {
+"slideNumber": 1,
+"totalSlides": 5
+}
+}
+],
+"metadata": {
+"title": "演示文档",
+"generationMode": "ppt-enhanced"
+}
 }
 \`\`\`
 
@@ -790,9 +742,10 @@ export const pagesStep: StepDefinition = createStepDefinition({
 
 1. **不要** 生成空白或只有标题的页面。
 2. **不要** 让页面元素重叠（除非是有意的层叠设计）。
-3. **必须** 为每页生成至少 3-5 个视觉元素（不包括背景）。
+3. **必须** 为每页生成至少 3-5 个视觉元素在 \`elements\` 数组中（不包括背景）。
 4. **必须** 确保文字与背景有足够的对比度。
 5. **必须** 响应 \`visualSuggestions\` 中的每一个建议。
+6. **必须** 使用 \`elements\` 数组构建所有视觉内容，\`content\` 和 \`bullets\` 必须为空数组。
 
 ---
 
@@ -819,7 +772,8 @@ export const pagesStep: StepDefinition = createStepDefinition({
   input: {
     sources: [JobStage.SCRIPT, JobStage.THEME_DESIGN],
     schema: pagesInputSchema,
-    description: 'SCRIPT 阶段的完整脚本和口播稿，以及 THEME_DESIGN 阶段的主题配置',
+    description:
+      'SCRIPT 阶段的完整脚本和口播稿，以及 THEME_DESIGN 阶段的主题配置',
   },
 
   // 输出配置

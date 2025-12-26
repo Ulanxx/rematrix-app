@@ -1,6 +1,6 @@
 /**
  * MVP 测试脚本 - 验证 AI PPT 生成
- * 
+ *
  * 运行: npx ts-node src/modules/ppt/test-ai-generation.ts
  */
 

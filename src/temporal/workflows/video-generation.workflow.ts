@@ -158,7 +158,13 @@ export async function videoGenerationWorkflow(input: VideoGenerationInput) {
   });
 
   async function waitForStageApproval(
-    stage: 'PLAN' | 'THEME_DESIGN' | 'OUTLINE' | 'STORYBOARD' | 'SCRIPT' | 'PAGES',
+    stage:
+      | 'PLAN'
+      | 'THEME_DESIGN'
+      | 'OUTLINE'
+      | 'STORYBOARD'
+      | 'SCRIPT'
+      | 'PAGES',
   ) {
     log.info(`Waiting for ${stage} approval`, { jobId: input.jobId });
 

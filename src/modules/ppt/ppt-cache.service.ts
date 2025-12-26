@@ -46,7 +46,11 @@ export class PptCacheService {
     return entry.value;
   }
 
-  async set(key: string, value: string, ttlSeconds: number = 604800): Promise<void> {
+  async set(
+    key: string,
+    value: string,
+    ttlSeconds: number = 604800,
+  ): Promise<void> {
     const expiresAt = Date.now() + ttlSeconds * 1000;
     this.cache.set(key, { value, expiresAt });
     this.logger.debug(`缓存写入: ${key}, TTL: ${ttlSeconds}s`);

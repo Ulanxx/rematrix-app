@@ -23,7 +23,8 @@ export class HtmlValidatorService {
     const issues: ValidationIssue[] = [];
 
     // 检测是否为页面片段(只包含 div)
-    const isFragment = html.trim().startsWith('<div') && !html.includes('<!DOCTYPE');
+    const isFragment =
+      html.trim().startsWith('<div') && !html.includes('<!DOCTYPE');
 
     if (isFragment) {
       // 片段验证:只检查基本语法
@@ -64,7 +65,10 @@ export class HtmlValidatorService {
     html: string,
     issues: ValidationIssue[],
   ): void {
-    if (!html.includes('<!DOCTYPE html>') && !html.includes('<!doctype html>')) {
+    if (
+      !html.includes('<!DOCTYPE html>') &&
+      !html.includes('<!doctype html>')
+    ) {
       issues.push({
         type: 'error',
         message: '缺少 DOCTYPE 声明',

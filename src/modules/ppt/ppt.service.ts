@@ -2332,12 +2332,16 @@ export class PptService {
 
     this.logger.log(`开始使用 AI 生成 ${slides.length} 页 PPT`);
 
-    const results = await this.aiHtmlGenerator.generateAllSlides(slides, context, {
-      themeConfig: options.themeConfig,
-      concurrency: options.concurrency || 3,
-      maxRetries: options.maxRetries || 2,
-      enableCache: options.enableCache !== false,
-    });
+    const results = await this.aiHtmlGenerator.generateAllSlides(
+      slides,
+      context,
+      {
+        themeConfig: options.themeConfig,
+        concurrency: options.concurrency || 3,
+        maxRetries: options.maxRetries || 2,
+        enableCache: options.enableCache !== false,
+      },
+    );
 
     const slideFragments = results
       .filter((r) => r.status === 'success')
@@ -2356,7 +2360,11 @@ export class PptService {
 
     // 将页面片段包装成完整的 HTML 文档
     const htmlPages = slideFragments.map((fragment, index) => {
-      return this.wrapSlideFragment(fragment, slides[index], options.themeConfig);
+      return this.wrapSlideFragment(
+        fragment,
+        slides[index],
+        options.themeConfig,
+      );
     });
 
     // 生成合并的完整文档
@@ -2467,11 +2475,15 @@ export class PptService {
 </head>
 <body>
   <div class="slide-container">
-    ${fragments.map((fragment, i) => `
+    ${fragments
+      .map(
+        (fragment, i) => `
     <div class="slide-wrapper">
       ${fragment}
     </div>
-    `).join('\n')}
+    `,
+      )
+      .join('\n')}
   </div>
 </body>
 </html>`;
