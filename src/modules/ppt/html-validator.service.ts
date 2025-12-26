@@ -22,9 +22,18 @@ export class HtmlValidatorService {
   validate(html: string, slideId?: string): ValidationResult {
     const issues: ValidationIssue[] = [];
 
-    this.validateDocumentStructure(html, issues);
-    this.validateRequiredResources(html, issues);
-    this.validateBasicSyntax(html, issues);
+    // 检测是否为页面片段(只包含 div)
+    const isFragment = html.trim().startsWith('<div') && !html.includes('<!DOCTYPE');
+
+    if (isFragment) {
+      // 片段验证:只检查基本语法
+      this.validateBasicSyntax(html, issues);
+    } else {
+      // 完整文档验证
+      this.validateDocumentStructure(html, issues);
+      this.validateRequiredResources(html, issues);
+      this.validateBasicSyntax(html, issues);
+    }
 
     const hasErrors = issues.some((i) => i.type === 'error');
     const hasWarnings = issues.some((i) => i.type === 'warning');

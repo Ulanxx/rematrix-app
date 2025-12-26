@@ -26,17 +26,7 @@ export interface ThemeConfig {
     background?: string;
     text?: string;
   };
-  designStyle?:
-    | 'modern'
-    | 'classic'
-    | 'minimal'
-    | 'creative'
-    | 'corporate'
-    | 'tech'
-    | 'glassmorphism'
-    | 'gradient-modern'
-    | 'tech-grid'
-    | 'neon-glass';
+  designStyle?: string;
   typography?: {
     fontFamily?: string;
     headingFont?: string;
@@ -91,13 +81,13 @@ export class AiHtmlGeneratorService {
     options: AiGenerationOptions = {},
   ): Promise<AiGeneratedHtml> {
     const startTime = Date.now();
-    const timeout = options.timeout || 30000;
+    const timeout = options.timeout || 60000;
 
     this.logger.log(`生成幻灯片 HTML: ${slide.id}`);
 
     try {
       const prompt = this.buildPrompt(slide, context, options.themeConfig);
-      const model = this.openai('openai/gpt-4o-mini');
+      const model = this.openai('z-ai/glm-4.7');
 
       const result = await Promise.race([
         generateText({
@@ -146,11 +136,11 @@ export class AiHtmlGeneratorService {
   ): string {
     const theme = themeConfig || {};
     const colors = theme.colors || {};
-    const typography = theme.typography || {};
     const slideNumber = slide.slideNumber || 1;
     const totalSlides = context.totalSlides || 1;
+    const designStyle = theme.designStyle || 'Google 风格';
 
-    return `你是一位富有创意的 PPT 设计师。请为这页 PPT 设计一个视觉效果出色的 HTML 页面。
+    return `你是一位富有创意的 PPT 设计师。请为这页 PPT 设计一个视觉效果出色的页面。
 
 # 📄 页面内容
 **标题**: ${slide.title}
@@ -160,41 +150,59 @@ export class AiHtmlGeneratorService {
 ${slide.content.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 ${slide.visualSuggestions ? `\n**视觉建议**: ${slide.visualSuggestions}` : ''}
 
-# 🎨 主题参考
-- 主色: ${colors.primary || '#6366F1'}
-- 辅色: ${colors.secondary || '#8B5CF6'}
-- 强调色: ${colors.accent || '#EC4899'}
+# 🎨 设计风格
+- 风格: ${designStyle}
+- 主色: ${colors.primary || '#4285F4'}
+- 辅色: ${colors.secondary || '#34A853'}
+- 强调色: ${colors.accent || '#FBBC05'}
 ${context.courseTitle ? `- 课程: ${context.courseTitle}` : ''}
 
 # 🛠️ 技术要求
-- 使用 Tailwind CSS: https://cdn.tailwindcss.com
-- 使用 Font Awesome: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css
-- 16:9 比例 (1920x1080px)
-- 完整的 HTML5 文档
+- 使用 Tailwind CSS 类名
+- 使用 Font Awesome 图标 (fas/far/fab)
+- 页面尺寸: 固定 1280x720px
+- 使用现代设计元素
 
-# � 设计要点
+# 🎯 设计要点
 1. **必须使用上面提供的实际标题和内容**，不要用占位符
-2. 根据内容自由发挥创意，选择合适的布局和视觉风格
+2. 根据"${designStyle}"风格自由发挥创意
 3. 可以使用渐变、玻璃拟态、阴影、动画等现代设计元素
 4. 为内容添加合适的图标装饰
 5. 确保文字清晰可读
 
-# 📤 输出
-直接输出完整的 HTML 代码，从 <!DOCTYPE html> 开始。`;
+# 📤 输出格式
+只输出一个 <div> 容器,不要包含 <html>、<head>、<body> 等标签。
+
+示例格式:
+<div class="w-[1280px] h-[720px] relative overflow-hidden" style="background: ...">
+  <!-- 页面内容 -->
+  <h1>标题</h1>
+  <div>内容</div>
+</div>
+
+直接输出 <div> 代码,不要添加任何解释。`;
   }
 
   private extractHtml(text: string): string {
+    // 尝试提取代码块中的内容
+    const codeBlockMatch = text.match(/```(?:html)?\s*([\s\S]*?)\s*```/i);
+    if (codeBlockMatch) {
+      return codeBlockMatch[1].trim();
+    }
+
+    // 尝试提取 <div> 标签
+    const divMatch = text.match(/<div[\s\S]*<\/div>/i);
+    if (divMatch) {
+      return divMatch[0];
+    }
+
+    // 如果包含完整的 HTML 文档,也接受(向后兼容)
     const htmlMatch = text.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
     if (htmlMatch) {
       return htmlMatch[0];
     }
 
-    const codeBlockMatch = text.match(/```html\s*([\s\S]*?)\s*```/i);
-    if (codeBlockMatch) {
-      return codeBlockMatch[1].trim();
-    }
-
-    if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+    if (text.includes('<div')) {
       return text.trim();
     }
 

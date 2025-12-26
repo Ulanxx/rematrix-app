@@ -2339,7 +2339,7 @@ export class PptService {
       enableCache: options.enableCache !== false,
     });
 
-    const htmlPages = results
+    const slideFragments = results
       .filter((r) => r.status === 'success')
       .map((r) => r.html);
 
@@ -2354,10 +2354,17 @@ export class PptService {
       `AI 生成完成: 成功 ${stats.success}/${stats.total}, 失败 ${stats.failed}, 无效 ${stats.invalid}`,
     );
 
+    // 将页面片段包装成完整的 HTML 文档
+    const htmlPages = slideFragments.map((fragment, index) => {
+      return this.wrapSlideFragment(fragment, slides[index], options.themeConfig);
+    });
+
+    // 生成合并的完整文档
+    const mergedHtml = this.wrapAllSlides(slideFragments, options.themeConfig);
+
     let uploadUrl: string | undefined;
 
-    if (options.uploadToCloud && htmlPages.length > 0) {
-      const mergedHtml = htmlPages.join('\n\n');
+    if (options.uploadToCloud && mergedHtml) {
       const buffer = Buffer.from(mergedHtml, 'utf-8');
       const result = await uploadBufferToBunny({
         path: `ppt-ai-${Date.now()}.html`,
@@ -2369,10 +2376,104 @@ export class PptService {
     }
 
     return {
-      htmlPages,
+      htmlPages: [mergedHtml],
       results,
       stats,
       uploadUrl,
     };
+  }
+
+  private wrapSlideFragment(
+    fragment: string,
+    slide: StoryboardSlide,
+    themeConfig?: ThemeConfig,
+  ): string {
+    const colors = themeConfig?.colors || {};
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${slide.title}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  ${fragment}
+</body>
+</html>`;
+  }
+
+  private wrapAllSlides(
+    fragments: string[],
+    themeConfig?: ThemeConfig,
+  ): string {
+    const colors = themeConfig?.colors || {};
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI PPT 演示</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { 
+      margin: 0; 
+      padding: 0; 
+      background: #f5f5f5;
+    }
+    .slide-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+    }
+    .slide-wrapper {
+      position: relative;
+      width: 1280px;
+      height: 720px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+      background: #ffffff;
+    }
+    .slide-wrapper:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    @media print {
+      body { background: #ffffff; }
+      .slide-container { padding: 0; gap: 0; }
+      .slide-wrapper {
+        box-shadow: none;
+        border-radius: 0;
+        page-break-after: always;
+        break-after: page;
+      }
+      .slide-wrapper:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="slide-container">
+    ${fragments.map((fragment, i) => `
+    <div class="slide-wrapper">
+      ${fragment}
+    </div>
+    `).join('\n')}
+  </div>
+</body>
+</html>`;
   }
 }

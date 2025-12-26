@@ -53,17 +53,17 @@ async function testAiGeneration() {
 
   const themeConfig = {
     colors: {
-      primary: '#4A48E2',
-      secondary: '#6366F1',
-      accent: '#8B5CF6',
-      background: '#0F172A',
-      text: '#FFFFFF',
+      primary: '#4285F4',
+      secondary: '#34A853',
+      accent: '#FBBC05',
+      background: '#FFFFFF',
+      text: '#202124',
     },
     typography: {
       fontFamily: 'Inter, sans-serif',
       headingFont: 'Poppins, sans-serif',
     },
-    designStyle: 'modern' as const,
+    designStyle: 'google 风格' as const,
   };
 
   try {

@@ -5,13 +5,15 @@ import {
   createStepDefinition,
   ExecutionContext,
 } from '../step-definition.interface';
-import { PdfService, PdfGenerationResult } from '../../pdf/pdf.service';
 import {
   PptService,
   PptSlideData,
   PptGenerationOptions,
 } from '../../ppt/ppt.service';
+import { PptCacheService } from '../../ppt/ppt-cache.service';
+import { HtmlValidatorService } from '../../ppt/html-validator.service';
 import {
+  AiHtmlGeneratorService,
   StoryboardSlide,
   GenerationContext,
   ThemeConfig,
@@ -146,12 +148,6 @@ export const pagesOutputSchema = z.object({
   pptUploadStatus: z.enum(['pending', 'success', 'failed']).optional(),
   pptUploadError: z.string().optional(),
 
-  // PDF 相关字段
-  pdfUrl: z.string().optional(),
-  pdfGenerated: z.boolean().default(false),
-  pdfPath: z.string().optional(),
-  pdfFileSize: z.number().optional(),
-
   // 元数据
   metadata: z
     .object({
@@ -232,7 +228,7 @@ export const pagesInputSchema = z.object({
             .enum(['conservative', 'balanced', 'creative', 'extreme'])
             .default('creative'),
           aspectRatio: z.enum(['16:9', '4:3', 'A4']).default('16:9'),
-          useAiGeneration: z.boolean().default(false),
+          useAiGeneration: z.boolean().default(true),
           aiConcurrency: z.number().min(1).max(5).default(3),
           aiMaxRetries: z.number().min(0).max(5).default(2),
           enableCache: z.boolean().default(true),
@@ -317,6 +313,7 @@ async function preparePagesInput(
       layoutComplexity: 'medium',
       designFreedom: 'creative',
       aspectRatio: '16:9',
+      useAiGeneration: true,
     },
     mergeOptions: {
       targetLayout: 'single-page',
@@ -414,7 +411,6 @@ function mergePptSlides(
  */
 async function customExecutePagesStep(
   inputData: Record<string, unknown>,
-  context: ExecutionContext,
 ): Promise<Record<string, unknown>> {
   // 获取输入数据
   const pagesData = inputData as {
@@ -438,14 +434,16 @@ async function customExecutePagesStep(
   const useAiGeneration = config.pptOptions?.useAiGeneration || false;
 
   // 初始化服务
-  const pdfService = new PdfService();
-  const pptService = new PptService();
+  const htmlValidator = new HtmlValidatorService();
+  const pptCacheService = new PptCacheService();
+  const aiHtmlGenerator = new AiHtmlGeneratorService(htmlValidator);
+  const pptService = new PptService(aiHtmlGenerator, pptCacheService);
 
   try {
     // 1. 生成或获取 PPT 幻灯片数据
     let pptSlidesData: PptSlideData[] = [];
     let finalHtmlContent = '';
-    let aiGenerationStats: any = null;
+    let aiSlideCount = 0;
 
     if (isPptMode && useAiGeneration && pagesData.script?.pages) {
       // 使用 AI 生成模式
@@ -457,7 +455,10 @@ async function customExecutePagesStep(
           id: `slide-${index + 1}`,
           title: page.keyPoints?.[0] || `幻灯片 ${index + 1}`,
           content: page.keyPoints || [],
-          visualSuggestions: page.visualSuggestions || '',
+          visualSuggestions: Array.isArray(page.visualSuggestions)
+            ? page.visualSuggestions.join('\n')
+            : page.visualSuggestions || '',
+          slideNumber: page.pageNumber ?? index + 1,
         }),
       );
 
@@ -469,14 +470,9 @@ async function customExecutePagesStep(
       };
 
       // 构建主题配置
-      const themeConfig: ThemeConfig = {
-        colors: {
-          primary: config.pptOptions?.colorScheme === 'blue' ? '#4A48E2' : '#6366F1',
-          secondary: '#8B5CF6',
-          accent: '#EC4899',
-        },
-        designStyle: config.pptOptions?.theme || 'modern',
-      };
+      // 这里不强行覆盖 AiHtmlGeneratorService 内部的默认主题（默认 Google 风格 + Google 配色）。
+      // 如果后续希望由 THEME_DESIGN 阶段驱动，可在这里把 themeDesign 映射成 ThemeConfig 再传入。
+      const themeConfig: ThemeConfig | undefined = undefined;
 
       // 调用 AI 生成
       const aiResult = await pptService.generatePptWithAi(
@@ -491,8 +487,9 @@ async function customExecutePagesStep(
         },
       );
 
-      aiGenerationStats = aiResult.stats;
       finalHtmlContent = aiResult.htmlPages.join('\n\n');
+      aiSlideCount =
+        pagesData.script?.pages?.length || aiResult.stats.total || 0;
 
       console.log(
         `✅ AI 生成完成: ${aiResult.stats.success}/${aiResult.stats.total} 页成功`,
@@ -530,9 +527,9 @@ async function customExecutePagesStep(
       finalHtmlContent = pagesData.htmlContent;
     }
 
-    // 第二阶段：智能合并
-    let mergedHtmlContent = '';
+    // 第二阶段：智能合并（如果需要）
     let mergeConfig: MergeConfig | undefined;
+    let mergedHtmlContent = '';
 
     if (isPptMode && config.mergeOptions && pptSlidesData.length > 0) {
       mergeConfig = {
@@ -557,62 +554,9 @@ async function customExecutePagesStep(
       mergedHtmlContent = mergePptSlides(pptSlidesData, mergeConfig);
     }
 
-    // 第三阶段：PDF 生成
-    const htmlForPdf = mergedHtmlContent || finalHtmlContent;
-    const pdfResult: PdfGenerationResult = await pdfService.generatePdfFromHtml(
-      htmlForPdf,
-      context.jobId,
-      {
-        format: (config.pptOptions?.aspectRatio === '16:9' ? '16:9' : 'A4') as
-          | 'A4'
-          | 'A3'
-          | 'A5'
-          | 'Letter'
-          | 'Legal'
-          | '16:9',
-        orientation:
-          (config.pptOptions?.aspectRatio || '16:9') === '16:9'
-            ? 'landscape'
-            : 'portrait',
-        margin: { top: 10, right: 10, bottom: 10, left: 10 },
-        printBackground: true,
-      },
-    );
-
-    // 验证 PDF 生成结果
-    const isValid = pdfService.validatePdf(pdfResult);
-    if (!isValid) {
-      throw new Error('Generated PDF validation failed');
-    }
-
-    // PPT 上传功能
-    let pptUploadResult: any = null;
-    if (isPptMode && finalHtmlContent) {
-      try {
-        const pptService = new PptService();
-        const pptGenerationResult = await pptService.generatePptHtmlWithUpload(
-          pptSlidesData,
-          config.pptOptions || {},
-          {
-            enabled: true,
-            pathPrefix: `jobs/${context.jobId}/ppt`,
-          },
-        );
-
-        pptUploadResult = pptGenerationResult.cloudStorage;
-      } catch (uploadError) {
-        console.warn('PPT 上传失败:', uploadError.message);
-        // 上传失败不影响主要流程，继续执行
-      }
-    }
-
     // 返回更新后的数据
     const result: Record<string, unknown> = {
-      htmlContent: finalHtmlContent,
-      pdfUrl: pdfResult.pdfUrl,
-      pdfGenerated: true,
-      pdfPath: pdfResult.storagePath,
-      pdfFileSize: pdfResult.fileSize,
+      htmlContent: mergedHtmlContent || finalHtmlContent,
       metadata: {
         title: pagesData.script?.pages?.[0]?.keyPoints?.[0] || '演示文档',
         description: `基于脚本生成的${isPptMode ? 'PPT 增强' : '传统'}演示文档`,
@@ -623,7 +567,8 @@ async function customExecutePagesStep(
         generationMode: config.generationMode,
         pptTheme: config.pptOptions?.theme,
         mergeStrategy: mergeConfig?.mergeStrategy,
-        totalSlides: pptSlidesData.length,
+        totalSlides:
+          pptSlidesData.length || aiSlideCount || pagesData.script?.pages?.length || 0,
         mergedPages: mergeConfig
           ? Math.ceil(
               pptSlidesData.length / (mergeConfig.maxSlidesPerPage || 6),
@@ -637,28 +582,9 @@ async function customExecutePagesStep(
       result.pptSlidesData = pptSlidesData;
     }
 
-    // 添加 PPT 云存储信息
-    if (pptUploadResult) {
-      result.pptUrl = pptUploadResult.pptUrl;
-      result.pptStoragePath = pptUploadResult.storagePath;
-      result.pptFileSize = pptUploadResult.fileSize;
-      result.pptUploadedAt = pptUploadResult.uploadedAt;
-      result.pptUploadStatus = pptUploadResult.uploadStatus;
-      if (pptUploadResult.error) {
-        result.pptUploadError = pptUploadResult.error;
-      }
-    }
-
-    // 添加合并相关数据
-    if (mergedHtmlContent && mergeConfig) {
-      result.mergedHtmlContent = mergedHtmlContent;
-      result.mergeConfig = mergeConfig;
-    }
-
     return result;
   } finally {
-    // 清理资源
-    await pdfService.onModuleDestroy();
+    // PDF 合并服务不需要清理资源
   }
 }
 

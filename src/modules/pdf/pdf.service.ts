@@ -948,6 +948,135 @@ export class PdfService {
   }
 
   /**
+   * 从 sliders 数组生成 PDF（逐页截图并拼接）
+   */
+  async generatePdfFromSliders(
+    sliders: Array<{ htmlContent: string; slideNumber: number }>,
+    jobId: string,
+    options: PdfGenerationOptions = {},
+  ): Promise<PdfGenerationResult> {
+    this.logger.log(
+      `开始从 ${sliders.length} 个 sliders 生成 PDF，任务: ${jobId}`,
+    );
+
+    const browser = await this.getBrowser();
+    const page = await browser.newPage();
+
+    try {
+      const defaultFormat = options.format || '16:9';
+      const isLandscape =
+        defaultFormat === '16:9' || options.orientation === 'landscape';
+
+      // 将所有 sliders 的 HTML 合并成一个完整文档
+      const combinedHtml = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { margin: 0; padding: 0; }
+    .slide-page {
+      width: ${defaultFormat === '16:9' ? '1280px' : '210mm'};
+      height: ${defaultFormat === '16:9' ? '720px' : '297mm'};
+      position: relative;
+      page-break-after: always;
+      break-after: page;
+    }
+    .slide-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    @media print {
+      .slide-page {
+        page-break-after: always;
+        break-after: page;
+      }
+      .slide-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  ${sliders
+    .map(
+      (slider) => `
+  <div class="slide-page">
+    ${slider.htmlContent}
+  </div>`,
+    )
+    .join('\n')}
+</body>
+</html>`;
+
+      const pdfOptions = {
+        format: defaultFormat === '16:9' ? undefined : defaultFormat,
+        orientation: isLandscape ? 'landscape' : 'portrait',
+        width: defaultFormat === '16:9' ? '1280px' : undefined,
+        height: defaultFormat === '16:9' ? '720px' : undefined,
+        margin: {
+          top: options.margin?.top || 0,
+          right: options.margin?.right || 0,
+          bottom: options.margin?.bottom || 0,
+          left: options.margin?.left || 0,
+        },
+        printBackground: options.printBackground !== false,
+        preferCSSPageSize: true,
+      };
+
+      await page.setContent(combinedHtml, {
+        waitUntil: 'networkidle',
+      });
+
+      await page.waitForTimeout(2000);
+
+      const pdfBuffer = await page.pdf(pdfOptions);
+
+      const timestamp = Date.now();
+      const storagePath = `jobs/${jobId}/pdfs/slides-${timestamp}.pdf`;
+
+      const uploadResult = await uploadFileToBunny({
+        path: storagePath,
+        buffer: pdfBuffer,
+        contentType: 'application/pdf',
+      });
+
+      const result: PdfGenerationResult = {
+        pdfUrl: uploadResult.publicUrl || uploadResult.storageUrl,
+        storagePath,
+        fileSize: pdfBuffer.length,
+        generatedAt: new Date().toISOString(),
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          format: defaultFormat,
+          orientation: isLandscape ? 'landscape' : 'portrait',
+          source: 'sliders',
+        },
+      };
+
+      this.logger.log(
+        `从 sliders 生成 PDF 完成: ${result.pdfUrl}, 大小: ${result.fileSize} bytes`,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `从 sliders 生成 PDF 失败: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    } finally {
+      await page.close();
+    }
+  }
+
+  /**
    * 验证 PDF 生成结果
    */
   validatePdf(pdfResult: PdfGenerationResult): boolean {
