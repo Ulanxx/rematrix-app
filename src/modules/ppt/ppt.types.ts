@@ -276,15 +276,12 @@ export interface PptSlideDesign {
 
 export interface PptSlideData {
   slideId: string;
-  title: string;
-  subtitle?: string;
-  content: string[];
-  bullets?: string[];
   design: PptSlideDesign;
   elements: PptElement[];
   metadata: {
     slideNumber: number;
     totalSlides: number;
+    title?: string; // 作为元数据保留，不直接用于渲染
     section?: string;
     notes?: string;
   };

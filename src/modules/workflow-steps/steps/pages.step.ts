@@ -19,19 +19,15 @@ import {
  * PAGES 阶段的输出 Schema (增强版支持 PPT 生成和合并)
  */
 export const pagesOutputSchema = z.object({
-  // 原有 HTML 内容 (向后兼容)
+  // PPT HTML 内容
   htmlContent: z.string().min(1),
   cssContent: z.string().optional(),
 
-  // PPT 相关字段
+  // PPT 幻灯片原始数据 (包含所有视觉元素)
   pptSlidesData: z
     .array(
       z.object({
         slideId: z.string(),
-        title: z.string(),
-        subtitle: z.string().optional(),
-        content: z.array(z.string()),
-        bullets: z.array(z.string()).optional(),
         design: z.object({
           theme: z.string(),
           colors: z.object({
@@ -102,6 +98,7 @@ export const pagesOutputSchema = z.object({
           .object({
             slideNumber: z.number(),
             totalSlides: z.number(),
+            title: z.string().optional(),
             section: z.string().optional(),
             notes: z.string().optional(),
           })
@@ -148,9 +145,6 @@ export const pagesOutputSchema = z.object({
       pageCount: z.number().optional(),
       aspectRatio: z.enum(['16:9', 'A4']).default('16:9'),
       designStyle: z.string().optional(),
-      generationMode: z
-        .enum(['traditional', 'ppt-enhanced'])
-        .default('ppt-enhanced'),
       pptTheme: z.string().optional(),
       mergeStrategy: z.string().optional(),
       totalSlides: z.number().optional(),
@@ -191,12 +185,9 @@ export const pagesInputSchema = z.object({
     visualEffects: z.union([z.array(z.string()), z.array(z.any())]),
     customizations: z.record(z.string(), z.any()),
   }),
-  // 新增配置选项
+  // 配置选项
   config: z
     .object({
-      generationMode: z
-        .enum(['traditional', 'ppt-enhanced'])
-        .default('ppt-enhanced'),
       pptOptions: z
         .object({
           theme: z
@@ -295,9 +286,8 @@ async function preparePagesInput(
     };
   }
 
-  // 默认使用 PPT 增强模式
+  // 默认配置
   inputData.config = {
-    generationMode: 'ppt-enhanced',
     pptOptions: {
       theme: 'modern',
       colorScheme: 'blue',
@@ -316,68 +306,6 @@ async function preparePagesInput(
   };
 
   return inputData;
-}
-
-/**
- * PPT 生成函数（重构版 - 基于 SCRIPT）
- */
-function generatePptSlides(
-  script: any,
-  pptOptions: PptGenerationOptions,
-): { slidesData: PptSlideData[]; htmlContent: string } {
-  const pptService = new PptService();
-
-  try {
-    // 将脚本数据转换为 PPT 幻灯片数据
-    const slidesData: PptSlideData[] = script.pages.map(
-      (page: any, index: number) => ({
-        slideId: `slide-${index + 1}`,
-        title: page.keyPoints?.[0] || `第 ${page.pageNumber} 页`,
-        subtitle: page.keyPoints?.[1],
-        content: page.keyPoints || [],
-        bullets: page.visualSuggestions || [],
-        design: {
-          theme: pptOptions.theme || 'modern',
-          colors: {
-            primary: '#3b82f6',
-            secondary: '#8b5cf6',
-            accent: '#06b6d4',
-            background: '#ffffff',
-            text: '#1f2937',
-            textLight: '#6b7280',
-          },
-          typography: {
-            fontFamily: 'Inter',
-            headingFont: 'Inter',
-            bodyFont: 'Inter',
-            baseSize: 16,
-            headingScale: [3.5, 2.5, 2, 1.5, 1.25, 1],
-          },
-          background: {
-            type: 'gradient',
-            value:
-              'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #ffffff 100%)',
-            opacity: 1,
-          },
-        },
-        elements: [],
-        metadata: {
-          slideNumber: index + 1,
-          totalSlides: script.pages.length,
-        },
-      }),
-    );
-
-    // 生成 PPT HTML
-    const pptResult = pptService.generatePptHtml(slidesData, pptOptions);
-
-    return {
-      slidesData,
-      htmlContent: pptResult.htmlContent,
-    };
-  } finally {
-    // PPT 服务不需要清理资源
-  }
 }
 
 /**
@@ -408,67 +336,34 @@ async function customExecutePagesStep(
   const pagesData = inputData as {
     script: any;
     config?: {
-      generationMode: 'traditional' | 'ppt-enhanced';
       pptOptions?: PptGenerationOptions;
       mergeOptions?: Partial<MergeConfig>;
     };
-    htmlContent?: string; // 传统模式下的 HTML 内容
-    pptSlidesData?: PptSlideData[]; // AI 生成的 PPT 幻灯片数据
+    pptSlidesData: PptSlideData[]; // 必须由 AI 生成
   };
 
   // 验证必要字段
-  if (!pagesData.script && !pagesData.htmlContent && !pagesData.pptSlidesData) {
-    throw new Error('脚本数据、HTML 内容或 PPT 幻灯片数据不能为空');
+  if (!pagesData.pptSlidesData || pagesData.pptSlidesData.length === 0) {
+    throw new Error('PPT 幻灯片数据不能为空，请确保 AI 生成步骤已成功完成');
   }
 
-  const config = pagesData.config || { generationMode: 'ppt-enhanced' };
-  const isPptMode = config.generationMode === 'ppt-enhanced';
+  const config = pagesData.config || {};
+  const pptOptions = config.pptOptions || {};
 
   // 初始化服务
   const pptService = new PptService();
 
   try {
-    // 1. 生成或获取 PPT 幻灯片数据
-    let pptSlidesData: PptSlideData[] = [];
-    let finalHtmlContent = '';
+    // 1. 使用 AI 生成的幻灯片数据生成 HTML
+    const pptSlidesData = pagesData.pptSlidesData;
+    const pptResult = pptService.generatePptHtml(pptSlidesData, pptOptions);
+    const finalHtmlContent = pptResult.htmlContent;
 
-    if (isPptMode) {
-      // 优先使用 AI 生成的 pptSlidesData
-      if (pagesData.pptSlidesData && pagesData.pptSlidesData.length > 0) {
-        pptSlidesData = pagesData.pptSlidesData;
-
-        // 使用 AI 生成的幻灯片数据生成 HTML
-        const pptResult = pptService.generatePptHtml(
-          pptSlidesData,
-          config.pptOptions || {},
-        );
-        finalHtmlContent = pptResult.htmlContent;
-      } else if (pagesData.script) {
-        // 降级方案：从 script 生成简单的幻灯片数据
-        const pptResult = generatePptSlides(
-          pagesData.script,
-          config.pptOptions || {},
-        );
-        pptSlidesData = pptResult.slidesData;
-        finalHtmlContent = pptResult.htmlContent;
-      } else {
-        throw new Error(
-          'PPT 模式下需要 AI 生成的 pptSlidesData 或 script 数据',
-        );
-      }
-    } else {
-      // 传统模式：使用原有逻辑
-      if (!pagesData.htmlContent) {
-        throw new Error('传统模式下 HTML 内容不能为空');
-      }
-      finalHtmlContent = pagesData.htmlContent;
-    }
-
-    // 第二阶段：智能合并（如果需要）
+    // 2. 第二阶段：智能合并（如果需要）
     let mergeConfig: MergeConfig | undefined;
     let mergedHtmlContent = '';
 
-    if (isPptMode && config.mergeOptions && pptSlidesData.length > 0) {
+    if (config.mergeOptions) {
       mergeConfig = {
         targetLayout: 'single-page',
         pageSize: 'A4',
@@ -496,15 +391,13 @@ async function customExecutePagesStep(
       htmlContent: mergedHtmlContent || finalHtmlContent,
       metadata: {
         title: pagesData.script?.pages?.[0]?.keyPoints?.[0] || '演示文档',
-        description: `基于脚本生成的${isPptMode ? 'PPT 增强' : '传统'}演示文档`,
-        pageCount: pptSlidesData.length || pagesData.script?.pages?.length || 1,
-        aspectRatio: config.pptOptions?.aspectRatio || '16:9',
-        designStyle: config.pptOptions?.theme || 'modern',
-        generationMode: config.generationMode,
-        pptTheme: config.pptOptions?.theme,
+        description: '基于 AI 生成的 PPT 增强演示文档',
+        pageCount: pptSlidesData.length,
+        aspectRatio: pptOptions.aspectRatio || '16:9',
+        designStyle: pptOptions.theme || 'modern',
+        pptTheme: pptOptions.theme,
         mergeStrategy: mergeConfig?.mergeStrategy,
-        totalSlides:
-          pptSlidesData.length || pagesData.script?.pages?.length || 0,
+        totalSlides: pptSlidesData.length,
         mergedPages: mergeConfig
           ? Math.ceil(
               pptSlidesData.length / (mergeConfig.maxSlidesPerPage || 6),
@@ -514,9 +407,7 @@ async function customExecutePagesStep(
     };
 
     // 添加 PPT 相关数据
-    if (isPptMode && pptSlidesData.length > 0) {
-      result.pptSlidesData = pptSlidesData;
-    }
+    result.pptSlidesData = pptSlidesData;
 
     return Promise.resolve(result);
   } finally {
@@ -526,13 +417,13 @@ async function customExecutePagesStep(
 
 /**
  * PAGES 阶段定义 (增强版)
- * 支持传统模式和 PPT 增强模式，包含三阶段流程：PPT 生成 -> 智能合并 -> PDF 转换
+ * 完全基于 AI 生成的 PPT 数据，包含三阶段流程：PPT 生成 -> 智能合并 -> PDF 转换
  */
 export const pagesStep: StepDefinition = createStepDefinition({
   stage: JobStage.PAGES,
   type: 'AI_GENERATION',
   name: 'Pages Generation (Enhanced)',
-  description: '根据分镜脚本生成 PPT 幻灯片，智能合并为单页，并生成 PDF 文档',
+  description: '基于 AI 生成的 PPT 幻灯片数据，进行智能合并并生成 PDF 文档',
 
   // AI 配置 (增强版 - 强调视觉丰富度和数据可视化)
   aiConfig: {
@@ -553,7 +444,14 @@ export const pagesStep: StepDefinition = createStepDefinition({
 # instructions
 基于 <script_json> 和 <theme_design_json>，为每一页创造独特的设计：
 
-1. **执行视觉建议**：
+## 🚨 核心要求：必须使用 elements 数组构建页面
+
+**重要**：你必须将所有视觉内容放入 \`elements\` 数组中。
+
+- **所有视觉内容**（标题、文本、图表、图标等）都必须作为 \`elements\` 数组中的元素。
+- \`metadata\` 中的 \`title\` 仅用于元数据参考。
+
+## 设计步骤
    - 认真分析 SCRIPT 中的 \`visualSuggestions\`。
    - 如果建议包含"图表"、"数据"，必须生成 \`chart\` 类型的元素。
    - 如果建议包含"图标"、"卡片"，请使用相应的视觉元素。
@@ -650,10 +548,6 @@ export const pagesStep: StepDefinition = createStepDefinition({
 "pptSlidesData": [
 {
 "slideId": "slide-1",
-"title": "市场增长分析",
-"subtitle": "2024年度报告",
-"content": [],
-"bullets": [],
 "design": {
 "theme": "modern",
 "colors": {
@@ -725,13 +619,13 @@ export const pagesStep: StepDefinition = createStepDefinition({
 ],
 "metadata": {
 "slideNumber": 1,
-"totalSlides": 5
+"totalSlides": 5,
+"title": "市场增长分析"
 }
 }
 ],
 "metadata": {
-"title": "演示文档",
-"generationMode": "ppt-enhanced"
+"title": "演示文档"
 }
 }
 \`\`\`
@@ -745,7 +639,7 @@ export const pagesStep: StepDefinition = createStepDefinition({
 3. **必须** 为每页生成至少 3-5 个视觉元素在 \`elements\` 数组中（不包括背景）。
 4. **必须** 确保文字与背景有足够的对比度。
 5. **必须** 响应 \`visualSuggestions\` 中的每一个建议。
-6. **必须** 使用 \`elements\` 数组构建所有视觉内容，\`content\` 和 \`bullets\` 必须为空数组。
+6. **必须** 使用 \`elements\` 数组构建所有视觉内容。
 
 ---
 
@@ -810,9 +704,6 @@ export const pagesStep: StepDefinition = createStepDefinition({
       pptSlidesData: [
         {
           slideId: 'slide-1',
-          title: '第一页标题',
-          content: ['内容1'],
-          bullets: ['要点1', '要点2'],
           design: {
             layout: 'title',
             theme: 'modern',
@@ -841,12 +732,12 @@ export const pagesStep: StepDefinition = createStepDefinition({
           metadata: {
             slideNumber: 1,
             totalSlides: 1,
+            title: '第一页标题',
           },
         },
       ],
       metadata: {
         title: '测试文档',
-        generationMode: 'ppt-enhanced' as const,
         pptTheme: 'modern',
         totalSlides: 1,
       },
@@ -857,22 +748,6 @@ export const pagesStep: StepDefinition = createStepDefinition({
       errors.push(
         `Output schema validation failed: ${validation.error.message}`,
       );
-    }
-
-    // 验证 PPT 数据结构
-    for (const slide of testOutput.pptSlidesData) {
-      if (!slide.slideId) {
-        errors.push('Each slide must have a slideId');
-      }
-      if (!slide.title) {
-        errors.push('Each slide must have a title');
-      }
-      if (!slide.design) {
-        errors.push('Each slide must have design configuration');
-      }
-      if (!slide.design.colors) {
-        errors.push('Each slide must have color configuration');
-      }
     }
 
     return {

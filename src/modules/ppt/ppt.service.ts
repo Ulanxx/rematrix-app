@@ -850,47 +850,7 @@ export class PptService {
     // 背景样式
     const backgroundClass = this.getBackgroundClass(design.background);
 
-    // 生成标题
-    const titleHtml = slide.title
-      ? `
-      <h1 class="ppt-title ${enableAnimations ? 'animate-fade-in' : ''}" style="animation-delay: 0.1s">
-        ${this.escapeHtml(slide.title)}
-      </h1>
-    `
-      : '';
-
-    // 生成副标题
-    const subtitleHtml = slide.subtitle
-      ? `
-      <h2 class="ppt-subtitle ${enableAnimations ? 'animate-slide-up' : ''}" style="animation-delay: 0.3s">
-        ${this.escapeHtml(slide.subtitle)}
-      </h2>
-    `
-      : '';
-
-    // 生成内容列表
-    let contentHtml = '';
-    if (slide.bullets && slide.bullets.length > 0) {
-      contentHtml = `
-        <ul class="ppt-list">
-          ${slide.bullets
-            .map((bullet, bulletIndex) => {
-              const icon = this.getBulletIcon(bulletIndex, design.theme);
-              const animationClass = enableAnimations ? 'animate-slide-up' : '';
-              const animationDelay = `${0.5 + bulletIndex * 0.1}s`;
-              return `
-                <li class="ppt-list-item ${animationClass}" style="animation-delay: ${animationDelay}">
-                  <i class="${icon}"></i>
-                  <span>${this.escapeHtml(bullet)}</span>
-                </li>
-              `;
-            })
-            .join('')}
-        </ul>
-      `;
-    }
-
-    // 生成自定义元素
+    // 仅生成自定义元素
     const elementsHtml = slide.elements
       .map((element, elementIndex) =>
         this.generateElementHtml(element, elementIndex, enableAnimations),
@@ -900,10 +860,7 @@ export class PptService {
     return `
       <div class="ppt-slide ${backgroundClass}" style="background: ${this.getBackgroundStyle(design.background)};">
         <div class="slide-number">${index + 1}</div>
-        <div class="ppt-content">
-          ${titleHtml}
-          ${subtitleHtml}
-          ${contentHtml}
+        <div class="ppt-content" style="position: relative; width: 100%; height: 100%; padding: 0; max-width: none; margin: 0;">
           ${elementsHtml}
         </div>
       </div>
@@ -1648,36 +1605,38 @@ export class PptService {
     const contentAnalysis = this.analyzeSlideContent(slideData);
 
     // 根据内容特征智能选择布局
-    return this.selectLayoutByContent(
-      contentAnalysis,
-      slideData,
-      slideIndex,
-      totalSlides,
-    );
+    return this.selectLayoutByContent(contentAnalysis);
   }
 
   /**
    * 分析幻灯片内容特征
    */
   private analyzeSlideContent(slideData: PptSlideData) {
-    const content = slideData.content.join(' ').toLowerCase();
-    const bullets = slideData.bullets || [];
     const elements = slideData.elements || [];
+    const textElements = elements.filter((el) => el.type === 'text');
+    const fullText = textElements
+      .map((el) => (typeof el.content === 'string' ? el.content : ''))
+      .join(' ')
+      .toLowerCase();
+
+    const bulletElements = elements.filter(
+      (el) => el.type === 'text' && el.style.textAlign === 'left',
+    );
 
     return {
       hasImages: elements.some((el) => el.type === 'image'),
       hasCharts: elements.some((el) => el.type === 'chart'),
       hasIcons: elements.some((el) => el.type === 'icon'),
-      bulletCount: bullets.length,
-      contentLength: content.length,
-      hasComparison: this.hasComparisonKeywords(content),
-      hasSteps: this.hasStepKeywords(content),
-      hasQuotes: this.hasQuoteKeywords(content),
-      hasNumbers: /\d+/.test(content),
-      hasListKeywords: this.hasListKeywords(content),
-      isTitleHeavy: slideData.title.length > 30,
-      isContentHeavy: content.length > 500,
-      hasSubtitles: !!slideData.subtitle,
+      elementCount: elements.length,
+      textLength: fullText.length,
+      bulletCount: bulletElements.length,
+      hasComparison: this.hasComparisonKeywords(fullText),
+      hasSteps: this.hasStepKeywords(fullText),
+      hasQuotes: this.hasQuoteKeywords(fullText),
+      hasNumbers: /\d+/.test(fullText),
+      hasListKeywords: this.hasListKeywords(fullText),
+      isTitleHeavy: (slideData.metadata.title || '').length > 30,
+      isContentHeavy: fullText.length > 500,
       sectionType: slideData.metadata?.section,
     };
   }
@@ -1685,12 +1644,7 @@ export class PptService {
   /**
    * 根据内容特征选择布局
    */
-  private selectLayoutByContent(
-    analysis: any,
-    slideData: PptSlideData,
-    slideIndex: number,
-    totalSlides: number,
-  ): PageLayoutType {
+  private selectLayoutByContent(analysis: any): PageLayoutType {
     // 图片优先布局
     if (analysis.hasImages && !analysis.isContentHeavy) {
       return 'image-text';
@@ -1875,7 +1829,7 @@ export class PptService {
     const layoutDistribution = this.analyzeLayoutDistribution(optimizedSlides);
 
     // 优化布局分配以避免重复
-    optimizedSlides.forEach((slide, index) => {
+    optimizedSlides.forEach((slide) => {
       const currentLayout = slide.design.layout;
       const recommendedLayouts = this.getRecommendedLayouts(slide);
 
@@ -1920,8 +1874,6 @@ export class PptService {
   private generateLayoutHtml(
     slideData: PptSlideData,
     template: PageLayoutTemplate,
-    theme: any,
-    aspectRatio: string,
   ): string {
     const slideId = slideData.slideId;
     const layoutClass = template.id;
@@ -1950,34 +1902,49 @@ export class PptService {
     section: LayoutSection,
     slideData: PptSlideData,
   ): string {
+    const slideTitle = slideData.metadata.title || '';
+    const textElements = slideData.elements.filter((el) => el.type === 'text');
+    const fullText = textElements
+      .map((el) => (typeof el.content === 'string' ? el.content : ''))
+      .join(' ');
+
     switch (section.content.type) {
       case 'title':
-        return `<h1>${this.escapeHtml(slideData.title)}</h1>`;
+        return `<h1>${this.escapeHtml(slideTitle)}</h1>`;
 
       case 'text':
-        if (slideData.subtitle) {
-          return `<h2>${this.escapeHtml(slideData.subtitle)}</h2>`;
-        }
-        return `<p>${this.escapeHtml(slideData.content.join(' '))}</p>`;
+        return `<p>${this.escapeHtml(fullText)}</p>`;
 
-      case 'bullets':
-        if (slideData.bullets && slideData.bullets.length > 0) {
+      case 'bullets': {
+        const bulletElements = slideData.elements.filter(
+          (el) => el.type === 'text' && typeof el.content === 'string',
+        );
+        if (bulletElements.length > 0) {
           return `<ul class="content-list">
-            ${slideData.bullets.map((bullet) => `<li class="content-item">${this.escapeHtml(bullet)}</li>`).join('')}
+            ${bulletElements
+              .map(
+                (el) =>
+                  `<li class="content-item">${this.escapeHtml(el.content as string)}</li>`,
+              )
+              .join('')}
           </ul>`;
         }
-        return `<div class="content-text">${slideData.content.map((text) => `<p>${this.escapeHtml(text)}</p>`).join('')}</div>`;
+        return `<div class="content-text"><p>${this.escapeHtml(fullText)}</p></div>`;
+      }
 
-      case 'cards':
-        if (slideData.bullets && slideData.bullets.length > 0) {
+      case 'cards': {
+        const bulletElements = slideData.elements.filter(
+          (el) => el.type === 'text' && typeof el.content === 'string',
+        );
+        if (bulletElements.length > 0) {
           return `<div class="cards-container">
-            ${slideData.bullets
+            ${bulletElements
               .map(
-                (bullet, index) => `
+                (el, index) => `
               <div class="card">
                 <div class="card-icon">📋</div>
                 <div class="card-title">要点 ${index + 1}</div>
-                <div class="card-content">${this.escapeHtml(bullet)}</div>
+                <div class="card-content">${this.escapeHtml(el.content as string)}</div>
               </div>
             `,
               )
@@ -1985,17 +1952,19 @@ export class PptService {
           </div>`;
         }
         return '';
+      }
 
-      case 'image':
+      case 'image': {
         const imageElement = slideData.elements.find(
           (el) => el.type === 'image',
         );
-        if (imageElement) {
+        if (imageElement && typeof imageElement.content === 'string') {
           return `<div class="image-container">
             <img src="${imageElement.content}" alt="Slide image" style="width: 100%; height: 100%; object-fit: cover;" />
           </div>`;
         }
         return '';
+      }
 
       default:
         return '';
@@ -2065,61 +2034,97 @@ export class PptService {
     // 添加封面页
     if (structure.includeCover && originalSlides.length > 0) {
       const firstSlide = originalSlides[0];
+      const title = firstSlide.metadata.title || '演示文稿';
       structuredSlides.push({
         slideId: `slide-cover`,
-        title: firstSlide.title,
-        subtitle: '演示文稿',
-        content: [],
-        bullets: [],
         design: {
           ...firstSlide.design,
           layout: 'cover',
         },
-        elements: [],
+        elements: [
+          {
+            id: 'cover-title',
+            type: 'text',
+            position: { x: 0, y: 300, width: 1600, height: 200 },
+            style: {
+              fontSize: 80,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              color: firstSlide.design.colors.text,
+            },
+            content: title,
+          },
+          {
+            id: 'cover-subtitle',
+            type: 'text',
+            position: { x: 0, y: 500, width: 1600, height: 100 },
+            style: {
+              fontSize: 36,
+              textAlign: 'center',
+              opacity: 0.8,
+              color: firstSlide.design.colors.text,
+            },
+            content: '演示文稿',
+          },
+        ],
         metadata: {
           slideNumber: ++slideIndex,
           totalSlides:
             originalSlides.length + this.getStructurePageCount(structure),
           section: '封面',
+          title: title,
         },
       });
     }
 
     // 添加目录页
     if (structure.includeToc && originalSlides.length > 2) {
-      const tocContent = originalSlides.map(
-        (slide, index) => `${index + 1}. ${slide.title}`,
-      );
+      const tocElements: PptElement[] = [
+        {
+          id: 'toc-header',
+          type: 'text',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { fontSize: 60, fontWeight: 'bold', textAlign: 'center' },
+          content: '目录',
+        },
+      ];
+
+      originalSlides.forEach((slide, idx) => {
+        tocElements.push({
+          id: `toc-item-${idx}`,
+          type: 'text',
+          position: { x: 300, y: 250 + idx * 60, width: 1000, height: 50 },
+          style: { fontSize: 32, textAlign: 'left' },
+          content: `${idx + 1}. ${slide.metadata.title || '幻灯片 ' + (idx + 1)}`,
+        });
+      });
 
       structuredSlides.push({
         slideId: `slide-toc`,
-        title: '目录',
-        content: [],
-        bullets: tocContent,
         design: {
           theme: originalSlides[0]?.design.theme || 'modern',
           layout: 'toc',
           colors: originalSlides[0]?.design.colors || this.getDefaultColors(),
           typography:
             originalSlides[0]?.design.typography || this.getDefaultTypography(),
-          animations: [],
           background: {
             type: 'solid',
             value: '#ffffff',
           },
         },
-        elements: [],
+        elements: tocElements,
         metadata: {
           slideNumber: ++slideIndex,
           totalSlides:
             originalSlides.length + this.getStructurePageCount(structure),
           section: '目录',
+          title: '目录',
         },
       });
     }
 
-    // 添加原始内容页并进行布局优化
-    let contentSlides = originalSlides.map((slide, index) => ({
+    // 添加原始内容页
+    const contentSlides = originalSlides.map((slide) => ({
       ...slide,
       metadata: {
         ...slide.metadata,
@@ -2129,55 +2134,50 @@ export class PptService {
       },
     }));
 
-    // 自动分配布局
-    if (options.autoLayoutAssignment) {
-      contentSlides = contentSlides.map((slide, index) => {
-        const optimizedSlide = { ...slide };
-        optimizedSlide.design.layout = this.autoAssignLayout(
-          optimizedSlide,
-          slideIndex,
-          originalSlides.length + this.getStructurePageCount(structure),
-        );
-        return optimizedSlide;
-      });
-
-      // 布局优化
-      if (options.enableDiverseLayouts) {
-        contentSlides = this.optimizeLayoutAssignment(contentSlides);
-      }
-    }
-
     structuredSlides.push(...contentSlides);
 
     // 添加总结页
     if (structure.includeSummary && originalSlides.length > 1) {
-      const summaryContent = originalSlides
-        .slice(-3)
-        .map((slide) => slide.title);
+      const summaryElements: PptElement[] = [
+        {
+          id: 'summary-header',
+          type: 'text',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { fontSize: 60, fontWeight: 'bold', textAlign: 'center' },
+          content: '总结',
+        },
+      ];
+
+      originalSlides.slice(-3).forEach((slide, idx) => {
+        summaryElements.push({
+          id: `summary-item-${idx}`,
+          type: 'text',
+          position: { x: 200, y: 250 + idx * 100, width: 1200, height: 80 },
+          style: { fontSize: 36, textAlign: 'left' },
+          content: `• ${slide.metadata.title || '关键点'}`,
+        });
+      });
 
       structuredSlides.push({
         slideId: `slide-summary`,
-        title: '总结',
-        content: [],
-        bullets: summaryContent,
         design: {
           theme: originalSlides[0]?.design.theme || 'modern',
           layout: 'summary',
           colors: originalSlides[0]?.design.colors || this.getDefaultColors(),
           typography:
             originalSlides[0]?.design.typography || this.getDefaultTypography(),
-          animations: [],
           background: {
             type: 'gradient',
             value: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
           },
         },
-        elements: [],
+        elements: summaryElements,
         metadata: {
           slideNumber: ++slideIndex,
           totalSlides:
             originalSlides.length + this.getStructurePageCount(structure),
           section: '总结',
+          title: '总结',
         },
       });
     }
@@ -2186,28 +2186,48 @@ export class PptService {
     if (structure.includeEnding) {
       structuredSlides.push({
         slideId: `slide-ending`,
-        title: '谢谢',
-        subtitle: '感谢聆听',
-        content: ['联系方式：example@email.com'],
-        bullets: [],
         design: {
           theme: originalSlides[0]?.design.theme || 'modern',
           layout: 'ending',
           colors: originalSlides[0]?.design.colors || this.getDefaultColors(),
           typography:
             originalSlides[0]?.design.typography || this.getDefaultTypography(),
-          animations: [],
           background: {
             type: 'gradient',
             value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           },
         },
-        elements: [],
+        elements: [
+          {
+            id: 'ending-thanks',
+            type: 'text',
+            position: { x: 0, y: 300, width: 1600, height: 200 },
+            style: {
+              fontSize: 100,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              color: '#ffffff',
+            },
+            content: '谢谢',
+          },
+          {
+            id: 'ending-contact',
+            type: 'text',
+            position: { x: 0, y: 550, width: 1600, height: 100 },
+            style: {
+              fontSize: 32,
+              textAlign: 'center',
+              color: 'rgba(255,255,255,0.8)',
+            },
+            content: '感谢聆听',
+          },
+        ],
         metadata: {
           slideNumber: ++slideIndex,
           totalSlides:
             originalSlides.length + this.getStructurePageCount(structure),
           section: '结尾',
+          title: '谢谢',
         },
       });
     }
@@ -2262,23 +2282,15 @@ export class PptService {
     index: number,
     options: PptGenerationOptions,
   ): string {
-    const { design } = slide;
-    const enableAnimations = options.enableAnimations ?? true;
-
     // 如果启用了多样化布局，使用新的布局系统
     if (options.enableDiverseLayouts) {
-      const template = this.getLayoutTemplate(design.layout);
+      const template = this.getLayoutTemplate(slide.design.layout);
       if (template) {
-        return this.generateLayoutHtml(
-          slide,
-          template,
-          design,
-          options.aspectRatio || '16:9',
-        );
+        return this.generateLayoutHtml(slide, template);
       }
     }
 
-    // 回退到原有的生成方法
+    // 使用直接渲染元素的方法
     return this.generateSlideHtml(slide, index, options);
   }
 
@@ -2358,17 +2370,8 @@ export class PptService {
       `AI 生成完成: 成功 ${stats.success}/${stats.total}, 失败 ${stats.failed}, 无效 ${stats.invalid}`,
     );
 
-    // 将页面片段包装成完整的 HTML 文档
-    const htmlPages = slideFragments.map((fragment, index) => {
-      return this.wrapSlideFragment(
-        fragment,
-        slides[index],
-        options.themeConfig,
-      );
-    });
-
     // 生成合并的完整文档
-    const mergedHtml = this.wrapAllSlides(slideFragments, options.themeConfig);
+    const mergedHtml = this.wrapAllSlides(slideFragments);
 
     let uploadUrl: string | undefined;
 
@@ -2391,12 +2394,7 @@ export class PptService {
     };
   }
 
-  private wrapSlideFragment(
-    fragment: string,
-    slide: StoryboardSlide,
-    themeConfig?: ThemeConfig,
-  ): string {
-    const colors = themeConfig?.colors || {};
+  private wrapSlideFragment(fragment: string, slide: StoryboardSlide): string {
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -2415,11 +2413,7 @@ export class PptService {
 </html>`;
   }
 
-  private wrapAllSlides(
-    fragments: string[],
-    themeConfig?: ThemeConfig,
-  ): string {
-    const colors = themeConfig?.colors || {};
+  private wrapAllSlides(fragments: string[]): string {
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -2464,6 +2458,7 @@ export class PptService {
         border-radius: 0;
         page-break-after: always;
         break-after: page;
+        break-after: page;
       }
       .slide-wrapper:last-child {
         page-break-after: auto;
@@ -2477,7 +2472,7 @@ export class PptService {
   <div class="slide-container">
     ${fragments
       .map(
-        (fragment, i) => `
+        (fragment) => `
     <div class="slide-wrapper">
       ${fragment}
     </div>
