@@ -244,38 +244,4 @@ export class HtmlValidatorService {
 
     return invalid;
   }
-
-  validateCss(css: string): ValidationResult {
-    const issues: ValidationIssue[] = [];
-
-    if (!css || css.trim().length === 0) {
-      return {
-        isValid: true,
-        issues: [],
-        hasErrors: false,
-        hasWarnings: false,
-      };
-    }
-
-    const braceCount = (css.match(/{/g) || []).length;
-    const closeBraceCount = (css.match(/}/g) || []).length;
-
-    if (braceCount !== closeBraceCount) {
-      issues.push({
-        type: 'error',
-        message: 'CSS 大括号不匹配',
-        code: 'CSS_BRACE_MISMATCH',
-      });
-    }
-
-    const hasErrors = issues.some((i) => i.type === 'error');
-    const hasWarnings = issues.some((i) => i.type === 'warning');
-
-    return {
-      isValid: !hasErrors,
-      issues,
-      hasErrors,
-      hasWarnings,
-    };
-  }
 }

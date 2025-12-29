@@ -13,7 +13,7 @@ export interface StoryboardSlide {
 }
 
 export interface GenerationContext {
-  outline?: string;
+  outline?: string[];
   courseTitle?: string;
   totalSlides?: number;
 }
@@ -136,6 +136,7 @@ export class AiHtmlGeneratorService {
   ): string {
     const theme = themeConfig || {};
     const colors = theme.colors || {};
+    const outline = context.outline || [];
     const slideNumber = slide.slideNumber || 1;
     const totalSlides = context.totalSlides || 1;
     const designStyle = theme.designStyle || 'Google 风格';
@@ -149,12 +150,13 @@ export class AiHtmlGeneratorService {
 **内容要点**:
 ${slide.content.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 ${slide.visualSuggestions ? `\n**视觉建议**: ${slide.visualSuggestions}` : ''}
+${outline.length > 0 ? `\n**大纲**: ${outline.join('\n')}` : ''}
 
 # 🎨 设计风格
 - 风格: ${designStyle}
 - 主色: ${colors.primary || '#4285F4'}
 - 辅色: ${colors.secondary || '#34A853'}
-- 强调色: ${colors.accent || '#FBBC05'}
+- 强调色: ${colors.accent || '#FBBC0s5'}
 ${context.courseTitle ? `- 课程: ${context.courseTitle}` : ''}
 
 # 🛠️ 技术要求

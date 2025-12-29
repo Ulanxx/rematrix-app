@@ -10,10 +10,6 @@ import {
   PptSlideData,
   PptGenerationOptions,
 } from '../../ppt/ppt.service';
-import {
-  PdfMergeService,
-  MergeConfig,
-} from '../../pdf-merge/pdf-merge.service';
 
 /**
  * PAGES 阶段的输出 Schema (增强版支持 PPT 生成和合并)
@@ -107,28 +103,6 @@ export const pagesOutputSchema = z.object({
     )
     .optional(),
 
-  // 合并相关字段
-  mergedHtmlContent: z.string().optional(),
-  mergeConfig: z
-    .object({
-      targetLayout: z.enum(['single-page', 'multi-page', 'grid']),
-      pageSize: z.enum(['A4', 'A3', '16:9', '4:3']),
-      mergeStrategy: z.enum(['grid', 'flow', 'smart-fit', 'compact']),
-      preserveAspectRatio: z.boolean(),
-      maxSlidesPerPage: z.number(),
-      spacing: z.object({
-        horizontal: z.number(),
-        vertical: z.number(),
-        margin: z.number(),
-      }),
-      scaling: z.object({
-        autoScale: z.boolean(),
-        maxScale: z.number(),
-        minScale: z.number(),
-      }),
-    })
-    .optional(),
-
   // PPT 云存储相关字段
   pptUrl: z.string().optional(),
   pptStoragePath: z.string().optional(),
@@ -146,9 +120,7 @@ export const pagesOutputSchema = z.object({
       aspectRatio: z.enum(['16:9', 'A4']).default('16:9'),
       designStyle: z.string().optional(),
       pptTheme: z.string().optional(),
-      mergeStrategy: z.string().optional(),
       totalSlides: z.number().optional(),
-      mergedPages: z.number().optional(),
     })
     .optional(),
 });
@@ -215,18 +187,6 @@ export const pagesInputSchema = z.object({
           aiConcurrency: z.number().min(1).max(5).default(3),
           aiMaxRetries: z.number().min(0).max(5).default(2),
           enableCache: z.boolean().default(true),
-        })
-        .optional(),
-      mergeOptions: z
-        .object({
-          targetLayout: z
-            .enum(['single-page', 'multi-page', 'grid'])
-            .default('single-page'),
-          pageSize: z.enum(['A4', 'A3', '16:9', '4:3']).default('A4'),
-          mergeStrategy: z
-            .enum(['grid', 'flow', 'smart-fit', 'compact'])
-            .default('smart-fit'),
-          maxSlidesPerPage: z.number().default(6),
         })
         .optional(),
     })
@@ -297,37 +257,14 @@ async function preparePagesInput(
       aspectRatio: '16:9',
       useAiGeneration: true,
     },
-    mergeOptions: {
-      targetLayout: 'single-page',
-      pageSize: 'A4',
-      mergeStrategy: 'smart-fit',
-      maxSlidesPerPage: 6,
-    },
   };
 
   return inputData;
 }
 
 /**
- * PPT 合并函数
- */
-function mergePptSlides(
-  slidesData: PptSlideData[],
-  mergeConfig: MergeConfig,
-): string {
-  const pdfMergeService = new PdfMergeService();
-
-  try {
-    const mergedResult = pdfMergeService.mergeSlides(slidesData, mergeConfig);
-    return mergedResult.htmlContent;
-  } finally {
-    // PDF 合并服务不需要清理资源
-  }
-}
-
-/**
- * PAGES 阶段的自定义执行函数 (增强版三阶段流程)
- * AI 生成 PPT -> 智能合并 -> PDF 转换
+ * PAGES 阶段的自定义执行函数 (增强版)
+ * AI 生成 PPT -> HTML 转换
  */
 async function customExecutePagesStep(
   inputData: Record<string, unknown>,
@@ -337,7 +274,6 @@ async function customExecutePagesStep(
     script: any;
     config?: {
       pptOptions?: PptGenerationOptions;
-      mergeOptions?: Partial<MergeConfig>;
     };
     pptSlidesData: PptSlideData[]; // 必须由 AI 生成
   };
@@ -353,77 +289,42 @@ async function customExecutePagesStep(
   // 初始化服务
   const pptService = new PptService();
 
-  try {
-    // 1. 使用 AI 生成的幻灯片数据生成 HTML
-    const pptSlidesData = pagesData.pptSlidesData;
-    const pptResult = pptService.generatePptHtml(pptSlidesData, pptOptions);
-    const finalHtmlContent = pptResult.htmlContent;
+  // 1. 使用 AI 生成的幻灯片数据生成 HTML
+  const pptSlidesData = pagesData.pptSlidesData;
+  const pptResult = await Promise.resolve(
+    pptService.generatePptHtml(pptSlidesData, pptOptions),
+  );
+  const finalHtmlContent = pptResult.htmlContent;
 
-    // 2. 第二阶段：智能合并（如果需要）
-    let mergeConfig: MergeConfig | undefined;
-    let mergedHtmlContent = '';
+  // 返回更新后的数据
+  const result: Record<string, unknown> = {
+    htmlContent: finalHtmlContent,
+    metadata: {
+      title: pagesData.script?.pages?.[0]?.keyPoints?.[0] || '演示文档',
+      description: '基于 AI 生成的 PPT 增强演示文档',
+      pageCount: pptSlidesData.length,
+      aspectRatio: pptOptions.aspectRatio || '16:9',
+      designStyle: pptOptions.theme || 'modern',
+      pptTheme: pptOptions.theme,
+      totalSlides: pptSlidesData.length,
+    },
+  };
 
-    if (config.mergeOptions) {
-      mergeConfig = {
-        targetLayout: 'single-page',
-        pageSize: 'A4',
-        mergeStrategy: 'smart-fit',
-        preserveAspectRatio: true,
-        maxSlidesPerPage: 6,
-        spacing: {
-          horizontal: 20,
-          vertical: 20,
-          margin: 40,
-        },
-        scaling: {
-          autoScale: true,
-          maxScale: 0.8,
-          minScale: 0.3,
-        },
-        ...config.mergeOptions,
-      };
+  // 添加 PPT 相关数据
+  result.pptSlidesData = pptSlidesData;
 
-      mergedHtmlContent = mergePptSlides(pptSlidesData, mergeConfig);
-    }
-
-    // 返回更新后的数据
-    const result: Record<string, unknown> = {
-      htmlContent: mergedHtmlContent || finalHtmlContent,
-      metadata: {
-        title: pagesData.script?.pages?.[0]?.keyPoints?.[0] || '演示文档',
-        description: '基于 AI 生成的 PPT 增强演示文档',
-        pageCount: pptSlidesData.length,
-        aspectRatio: pptOptions.aspectRatio || '16:9',
-        designStyle: pptOptions.theme || 'modern',
-        pptTheme: pptOptions.theme,
-        mergeStrategy: mergeConfig?.mergeStrategy,
-        totalSlides: pptSlidesData.length,
-        mergedPages: mergeConfig
-          ? Math.ceil(
-              pptSlidesData.length / (mergeConfig.maxSlidesPerPage || 6),
-            )
-          : undefined,
-      },
-    };
-
-    // 添加 PPT 相关数据
-    result.pptSlidesData = pptSlidesData;
-
-    return Promise.resolve(result);
-  } finally {
-    // PDF 合并服务不需要清理资源
-  }
+  return result;
 }
 
 /**
  * PAGES 阶段定义 (增强版)
- * 完全基于 AI 生成的 PPT 数据，包含三阶段流程：PPT 生成 -> 智能合并 -> PDF 转换
+ * 完全基于 AI 生成的 PPT 数据
  */
 export const pagesStep: StepDefinition = createStepDefinition({
   stage: JobStage.PAGES,
   type: 'AI_GENERATION',
   name: 'Pages Generation (Enhanced)',
-  description: '基于 AI 生成的 PPT 幻灯片数据，进行智能合并并生成 PDF 文档',
+  description: '基于 AI 生成的 PPT 幻灯片数据',
 
   // AI 配置 (增强版 - 强调视觉丰富度和数据可视化)
   aiConfig: {
@@ -674,7 +575,7 @@ export const pagesStep: StepDefinition = createStepDefinition({
   output: {
     type: ArtifactType.JSON,
     schema: pagesOutputSchema,
-    description: 'PPT 幻灯片数据、合并配置和 PDF 文档信息，支持三阶段生成流程',
+    description: 'PPT 幻灯片数据，支持 AI 生成流程',
   },
 
   // 执行配置
@@ -685,7 +586,7 @@ export const pagesStep: StepDefinition = createStepDefinition({
       backoffMs: 1000,
       maxBackoffMs: 5000,
     },
-    timeoutMs: 600000, // 10 分钟超时（包含 PPT 生成、合并和 PDF 转换时间）
+    timeoutMs: 300000, // 5 分钟超时
   },
 
   // 自定义执行函数
