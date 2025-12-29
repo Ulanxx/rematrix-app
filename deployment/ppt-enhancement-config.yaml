@@ -267,7 +267,7 @@ security:
   accessControl:
     rateLimiting:
       enabled: true
-      windowMs: 60000  # 1分钟
+      windowMs: 600000  # 1分钟
       maxRequests: 100
     
     authentication:

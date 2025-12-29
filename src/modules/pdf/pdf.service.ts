@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { chromium, Browser } from 'playwright';
 import { uploadFileToBunny } from '../../utils/bunny-storage';
-import { PptGenerationOptions, PptGenerationResult } from '../ppt/ppt.types';
+import { PptGenerationResult } from '../ppt/ppt.types';
 
 /**
  * PDF 生成接口
@@ -46,8 +46,8 @@ export interface PdfGenerationOptions {
 export interface PptPdfGenerationOptions {
   /** 基础 PDF 生成选项 */
   pdfOptions?: PdfGenerationOptions;
-  /** PPT 特定选项 */
-  pptOptions?: PptGenerationOptions;
+  /** PPT 生成选项 (适配简化版) */
+  pptOptions?: any;
   /** 是否包含动画效果 */
   includeAnimations?: boolean;
   /** 页面范围 */
@@ -795,7 +795,7 @@ export class PdfService {
     options: PptPdfGenerationOptions = {},
   ): Promise<PdfGenerationResult> {
     this.logger.log(
-      `开始从 PPT HTML 生成 PDF，幻灯片数量: ${pptResult.metadata.slideCount}`,
+      `开始从 PPT HTML 生成 PDF，幻灯片数量: ${pptResult.stats.total}`,
     );
 
     const browser = await this.getBrowser();
@@ -819,8 +819,8 @@ export class PdfService {
         preferCSSPageSize: true,
       };
 
-      // 设置视口大小以匹配 PPT 比例
-      const aspectRatio = pptResult.options.aspectRatio || '16:9';
+      // 设置视口大小以匹配 PPT 比例 (默认 16:9)
+      const aspectRatio = '16:9';
       if (aspectRatio === '16:9') {
         await page.setViewportSize({ width: 1600, height: 900 });
       } else if (aspectRatio === '4:3') {
@@ -828,7 +828,7 @@ export class PdfService {
       }
 
       // 设置页面内容
-      await page.setContent(pptResult.htmlContent, {
+      await page.setContent(pptResult.htmlPages.join('\n'), {
         waitUntil: 'networkidle',
       });
 
@@ -880,7 +880,7 @@ export class PdfService {
 
       // 上传到云存储
       const timestamp = Date.now();
-      const storagePath = `ppt/pdfs/ppt-${timestamp}-${pptResult.metadata.slideCount}slides.pdf`;
+      const storagePath = `ppt/pdfs/ppt-${timestamp}-${pptResult.stats.total}slides.pdf`;
 
       const uploadResult = await uploadFileToBunny({
         path: storagePath,

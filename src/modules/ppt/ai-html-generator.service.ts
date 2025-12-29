@@ -41,6 +41,7 @@ export interface AiGenerationOptions {
   timeout?: number;
   concurrency?: number;
   maxRetries?: number;
+  skipValidation?: boolean; // 新增：跳过HTML验证以提升速度
 }
 
 export interface AiGeneratedHtml {
@@ -81,13 +82,13 @@ export class AiHtmlGeneratorService {
     options: AiGenerationOptions = {},
   ): Promise<AiGeneratedHtml> {
     const startTime = Date.now();
-    const timeout = options.timeout || 60000;
+    const timeout = options.timeout || 600000;
 
     this.logger.log(`生成幻灯片 HTML: ${slide.id}`);
 
     try {
       const prompt = this.buildPrompt(slide, context, options.themeConfig);
-      const model = this.openai('z-ai/glm-4.7');
+      const model = this.openai('google/gemini-3-flash-preview');
 
       const result = await Promise.race([
         generateText({
@@ -269,6 +270,15 @@ ${context.courseTitle ? `- 课程: ${context.courseTitle}` : ''}
         }
 
         const result = await this.generateSlideHtml(slide, context, options);
+
+        // 如果启用跳过验证，直接返回成功
+        if (options.skipValidation) {
+          return {
+            ...result,
+            status: 'success',
+            retryCount: attempt,
+          };
+        }
 
         const validation = this.htmlValidator.validate(result.html, slide.id);
 

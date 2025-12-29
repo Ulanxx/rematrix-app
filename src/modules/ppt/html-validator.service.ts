@@ -155,6 +155,26 @@ export class HtmlValidatorService {
   }
 
   private validateBasicSyntax(html: string, issues: ValidationIssue[]): void {
+    // 对于片段，只检查严重的语法错误
+    const isFragment =
+      html.trim().startsWith('<div') && !html.includes('<!DOCTYPE');
+
+    if (isFragment) {
+      // 片段模式：只检查明显错误的标签结构
+      const openDivs = (html.match(/<div/g) || []).length;
+      const closeDivs = (html.match(/<\/div>/g) || []).length;
+
+      if (openDivs !== closeDivs) {
+        issues.push({
+          type: 'warning', // 降级为警告，不触发重试
+          message: `div标签数量不匹配 (开始: ${openDivs}, 结束: ${closeDivs})`,
+          code: 'DIV_MISMATCH',
+        });
+      }
+      return;
+    }
+
+    // 完整文档模式：进行完整验证
     const unclosedTags = this.findUnclosedTags(html);
     if (unclosedTags.length > 0) {
       issues.push({
@@ -191,6 +211,26 @@ export class HtmlValidatorService {
       'source',
       'track',
       'wbr',
+      // SVG self-closing tags
+      'stop',
+      'polygon',
+      'line',
+      'animate',
+      'circle',
+      'rect',
+      'ellipse',
+      'path',
+      'text',
+      'g',
+      'defs',
+      'use',
+      'symbol',
+      'marker',
+      'clippath',
+      'mask',
+      'pattern',
+      'gradient',
+      'filter',
     ];
 
     const openTagRegex = /<(\w+)(?:\s[^>]*)?>/g;

@@ -54,7 +54,7 @@ export class WorkflowWebSocketGateway
   private readonly clientJobs = new Map<string, string>();
   private readonly heartbeats = new Map<string, NodeJS.Timeout>();
   private readonly HEARTBEAT_INTERVAL = 30000; // 30秒心跳
-  private readonly CONNECTION_TIMEOUT = 60000; // 60秒超时
+  private readonly CONNECTION_TIMEOUT = 600000; // 60秒超时
 
   constructor(private readonly workflowEngine: WorkflowEngineService) {}
 

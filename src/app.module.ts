@@ -5,7 +5,6 @@ import { AppService } from './app.service';
 import { ArtifactsModule } from './modules/artifacts/artifacts.module';
 import { ChatMessagesModule } from './modules/chat-messages/chat-messages.module';
 import { JobsModule } from './modules/jobs/jobs.module';
-import { PageGenerationModule } from './modules/page-generation/page-generation.module';
 import { PdfModule } from './modules/pdf/pdf.module';
 import { PptModule } from './modules/ppt/ppt.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -25,7 +24,6 @@ import { WorkflowEngineModule } from './modules/workflow-engine/workflow-engine.
     StorageModule,
     ChatMessagesModule,
     WorkflowEngineModule,
-    PageGenerationModule,
     PdfModule,
     PptModule,
   ],

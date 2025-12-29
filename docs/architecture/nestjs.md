@@ -63,7 +63,6 @@ graph TB
     ArtifactsModule,
     WorkflowEngineModule,
     ChatMessagesModule,
-    PageGenerationModule,
     StorageModule,
     TemporalModule,
     PromptOpsModule,

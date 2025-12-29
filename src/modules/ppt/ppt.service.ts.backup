@@ -1,0 +1,2138 @@
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  PptSlideData,
+  PptGenerationOptions,
+  PptGenerationResult,
+  PageLayoutType,
+  PageLayoutTemplate,
+  LayoutSection,
+  PptElement,
+  PresentationStructure,
+} from './ppt.types';
+import { uploadBufferToBunny } from '../../utils/bunny-storage';
+import {
+  AiHtmlGeneratorService,
+  StoryboardSlide,
+  GenerationContext,
+  ThemeConfig,
+} from './ai-html-generator.service';
+import { PptCacheService } from './ppt-cache.service';
+
+// 重新导出类型以供其他模块使用
+export type { PptSlideData, PptGenerationOptions, PptGenerationResult };
+
+// 现代设计模板配置
+export interface ModernDesignTemplate {
+  id: string;
+  name: string;
+  styles: {
+    background: string;
+    backdropFilter?: string;
+    border?: string;
+    borderRadius?: string;
+    boxShadow?: string;
+    backgroundSize?: string;
+    colors: {
+      primary: string;
+      secondary: string;
+      accent: string;
+      background: string;
+      text: string;
+    };
+  };
+  effects: string[];
+  animations?: string[];
+}
+/**
+ * PPT 生成服务
+ *
+ * 负责将 PPT 数据结构转换为炫酷的 HTML 幻灯片
+ */
+@Injectable()
+export class PptService {
+  private readonly logger = new Logger(PptService.name);
+
+  constructor(
+    private readonly aiHtmlGenerator?: AiHtmlGeneratorService,
+    private readonly cacheService?: PptCacheService,
+  ) {}
+
+  // 现代设计模板库
+  private readonly modernDesignTemplates: ModernDesignTemplate[] = [
+    {
+      id: 'glassmorphism',
+      name: '玻璃拟态',
+      styles: {
+        background: 'rgba(255, 255, 255, 0.03)',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+        colors: {
+          primary: '#4A48E2',
+          secondary: '#6366F1',
+          accent: '#8B5CF6',
+          background: 'rgba(255, 255, 255, 0.03)',
+          text: '#FFFFFF',
+        },
+      },
+      effects: ['glass-effect', 'subtle-glow', 'backdrop-blur'],
+      animations: ['fade-in', 'slide-up'],
+    },
+    {
+      id: 'gradient-modern',
+      name: '现代渐变',
+      styles: {
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        borderRadius: '20px',
+        boxShadow: '0 20px 40px rgba(102, 126, 234, 0.3)',
+        colors: {
+          primary: '#667eea',
+          secondary: '#764ba2',
+          accent: '#f093fb',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          text: '#FFFFFF',
+        },
+      },
+      effects: ['gradient-bg', 'color-shift', 'depth'],
+      animations: ['gradient-shift', 'pulse'],
+    },
+    {
+      id: 'tech-grid',
+      name: '科技网格',
+      styles: {
+        background:
+          'radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.15) 1px, transparent 0)',
+        backgroundSize: '40px 40px',
+        backdropFilter: 'blur(5px)',
+        border: '1px solid rgba(0, 255, 255, 0.3)',
+        borderRadius: '12px',
+        colors: {
+          primary: '#00FFFF',
+          secondary: '#0080FF',
+          accent: '#FF00FF',
+          background: 'rgba(0, 20, 40, 0.8)',
+          text: '#00FFFF',
+        },
+      },
+      effects: ['tech-grid', 'neon-glow', 'cyber-punk'],
+      animations: ['grid-pulse', 'neon-flicker'],
+    },
+    {
+      id: 'neon-glass',
+      name: '霓虹玻璃',
+      styles: {
+        background: 'rgba(0, 0, 0, 0.7)',
+        backdropFilter: 'blur(20px)',
+        border: '2px solid transparent',
+        borderRadius: '24px',
+        boxShadow:
+          '0 0 40px rgba(255, 0, 255, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.3)',
+        colors: {
+          primary: '#FF00FF',
+          secondary: '#00FFFF',
+          accent: '#FFFF00',
+          background: 'rgba(0, 0, 0, 0.7)',
+          text: '#FFFFFF',
+        },
+      },
+      effects: ['neon-border', 'glass-reflection', 'color-glow'],
+      animations: ['neon-pulse', 'color-wave'],
+    },
+  ];
+
+  // 页面布局模板库
+  private readonly layoutTemplates: PageLayoutTemplate[] = [
+    // 封面页模板
+    {
+      id: 'cover-modern',
+      name: '现代封面',
+      type: 'cover',
+      description: '现代风格的封面页，包含大标题、副标题和作者信息',
+      category: 'structure',
+      sections: [
+        {
+          id: 'main-title',
+          type: 'header',
+          position: { x: 0, y: 200, width: 1600, height: 200 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'subtitle',
+          type: 'content',
+          position: { x: 200, y: 450, width: 1200, height: 100 },
+          style: { textAlign: 'center' },
+          content: { type: 'text', maxLength: 100 },
+        },
+        {
+          id: 'author-info',
+          type: 'footer',
+          position: { x: 600, y: 700, width: 400, height: 80 },
+          style: { textAlign: 'center' },
+          content: { type: 'text', maxLength: 50 },
+        },
+      ],
+      css: `
+        .cover-modern { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); }
+        .cover-modern h1 { font-size: 4rem; font-weight: 800; margin-bottom: 1rem; }
+        .cover-modern h2 { font-size: 1.8rem; font-weight: 400; opacity: 0.9; }
+        .cover-modern .author { font-size: 1.2rem; opacity: 0.8; }
+      `,
+      responsive: true,
+      complexity: 'simple',
+    },
+    // 目录页模板
+    {
+      id: 'toc-clean',
+      name: '简洁目录',
+      type: 'toc',
+      description: '清晰的目录页布局，支持章节分组',
+      category: 'structure',
+      sections: [
+        {
+          id: 'toc-title',
+          type: 'header',
+          position: { x: 100, y: 100, width: 1400, height: 100 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'toc-content',
+          type: 'main',
+          position: { x: 300, y: 250, width: 1000, height: 500 },
+          style: { padding: '2rem' },
+          content: { type: 'bullets', required: true },
+        },
+      ],
+      css: `
+        .toc-clean { background: var(--background-color); }
+        .toc-clean h1 { font-size: 3rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .toc-clean .toc-list { list-style: none; padding: 0; }
+        .toc-clean .toc-item { font-size: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; border-left: 4px solid var(--primary-color); background: var(--primary-color)10; }
+      `,
+      responsive: true,
+      complexity: 'simple',
+    },
+    // 内容页模板
+    {
+      id: 'content-standard',
+      name: '标准内容',
+      type: 'content',
+      description: '标准的内容页布局，包含标题和要点列表',
+      category: 'content',
+      sections: [
+        {
+          id: 'content-title',
+          type: 'header',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'content-main',
+          type: 'main',
+          position: { x: 150, y: 250, width: 1300, height: 550 },
+          style: { padding: '1rem' },
+          content: { type: 'bullets', required: true },
+        },
+      ],
+      css: `
+        .content-standard { background: var(--background-color); }
+        .content-standard h1 { font-size: 2.5rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .content-standard .content-list { list-style: none; padding: 0; }
+        .content-standard .content-item { font-size: 1.8rem; margin-bottom: 1.2rem; padding: 1rem; border-left: 4px solid var(--primary-color); background: var(--primary-color)08; }
+      `,
+      responsive: true,
+      complexity: 'simple',
+    },
+    // 双栏布局模板
+    {
+      id: 'two-column-balanced',
+      name: '双栏平衡',
+      type: 'two-column',
+      description: '平衡的双栏布局，适合对比或并列内容',
+      category: 'content',
+      sections: [
+        {
+          id: 'two-col-title',
+          type: 'header',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'two-col-left',
+          type: 'content',
+          position: { x: 100, y: 250, width: 650, height: 550 },
+          style: {
+            padding: '1.5rem',
+            borderRight: '2px solid var(--primary-color)30',
+          },
+          content: { type: 'bullets' },
+        },
+        {
+          id: 'two-col-right',
+          type: 'content',
+          position: { x: 850, y: 250, width: 650, height: 550 },
+          style: { padding: '1.5rem' },
+          content: { type: 'bullets' },
+        },
+      ],
+      css: `
+        .two-column-balanced { background: var(--background-color); }
+        .two-column-balanced h1 { font-size: 2.5rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .two-column-balanced .column-list { list-style: none; padding: 0; }
+        .two-column-balanced .column-item { font-size: 1.6rem; margin-bottom: 1rem; padding: 0.8rem; background: var(--primary-color)08; }
+      `,
+      responsive: true,
+      complexity: 'medium',
+    },
+    // 图文混排模板
+    {
+      id: 'image-text-left',
+      name: '左图右文',
+      type: 'image-text',
+      description: '图片在左，文字在右的图文混排布局',
+      category: 'visual',
+      sections: [
+        {
+          id: 'img-text-title',
+          type: 'header',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'img-text-image',
+          type: 'aside',
+          position: { x: 100, y: 250, width: 600, height: 450 },
+          style: { padding: '1rem', borderRadius: '12px' },
+          content: { type: 'image' },
+        },
+        {
+          id: 'img-text-content',
+          type: 'main',
+          position: { x: 750, y: 250, width: 750, height: 450 },
+          style: { padding: '1.5rem' },
+          content: { type: 'bullets', required: true },
+        },
+      ],
+      css: `
+        .image-text-left { background: var(--background-color); }
+        .image-text-left h1 { font-size: 2.5rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .image-text-left .image-container { border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        .image-text-left .content-list { list-style: none; padding: 0; }
+        .image-text-left .content-item { font-size: 1.6rem; margin-bottom: 1rem; padding: 0.8rem; background: var(--primary-color)08; }
+      `,
+      responsive: true,
+      complexity: 'medium',
+    },
+    // 卡片布局模板
+    {
+      id: 'cards-grid',
+      name: '卡片网格',
+      type: 'cards',
+      description: '卡片式网格布局，适合展示多个要点',
+      category: 'visual',
+      sections: [
+        {
+          id: 'cards-title',
+          type: 'header',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'cards-content',
+          type: 'main',
+          position: { x: 100, y: 250, width: 1400, height: 550 },
+          style: { padding: '1rem' },
+          content: { type: 'cards', required: true },
+        },
+      ],
+      css: `
+        .cards-grid { background: var(--background-color); }
+        .cards-grid h1 { font-size: 2.5rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .cards-grid .cards-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .cards-grid .card { background: var(--primary-color)08; border: 1px solid var(--primary-color)20; border-radius: 12px; padding: 1.5rem; transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .cards-grid .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .cards-grid .card-title { font-size: 1.4rem; font-weight: 600; color: var(--primary-color); margin-bottom: 0.8rem; }
+        .cards-grid .card-content { font-size: 1.1rem; line-height: 1.6; color: var(--text-color); }
+      `,
+      responsive: true,
+      complexity: 'medium',
+    },
+    // 对比页模板
+    {
+      id: 'comparison-split',
+      name: '对比分栏',
+      type: 'comparison',
+      description: '左右分栏的对比布局，适合展示对比内容',
+      category: 'content',
+      sections: [
+        {
+          id: 'comparison-title',
+          type: 'header',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'comparison-left',
+          type: 'content',
+          position: { x: 100, y: 250, width: 650, height: 550 },
+          style: {
+            padding: '1.5rem',
+            backgroundColor: 'var(--secondary-color)10',
+            border: '2px solid var(--secondary-color)30',
+            borderRadius: '12px',
+          },
+          content: { type: 'bullets', required: true },
+        },
+        {
+          id: 'comparison-right',
+          type: 'content',
+          position: { x: 850, y: 250, width: 650, height: 550 },
+          style: {
+            padding: '1.5rem',
+            backgroundColor: 'var(--accent-color)10',
+            border: '2px solid var(--accent-color)30',
+            borderRadius: '12px',
+          },
+          content: { type: 'bullets', required: true },
+        },
+      ],
+      css: `
+        .comparison-split { background: var(--background-color); }
+        .comparison-split h1 { font-size: 2.5rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .comparison-split .comparison-title { font-size: 1.8rem; font-weight: 600; margin-bottom: 1rem; text-align: center; }
+        .comparison-split .comparison-list { list-style: none; padding: 0; }
+        .comparison-split .comparison-item { font-size: 1.5rem; margin-bottom: 1rem; padding: 0.8rem; background: rgba(255,255,255,0.5); }
+      `,
+      responsive: true,
+      complexity: 'medium',
+    },
+    // 总结页模板
+    {
+      id: 'summary-clean',
+      name: '简洁总结',
+      type: 'summary',
+      description: '清晰的总结页布局，适合回顾要点',
+      category: 'structure',
+      sections: [
+        {
+          id: 'summary-title',
+          type: 'header',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'summary-content',
+          type: 'main',
+          position: { x: 200, y: 250, width: 1200, height: 500 },
+          style: { padding: '2rem' },
+          content: { type: 'bullets', required: true },
+        },
+      ],
+      css: `
+        .summary-clean { background: linear-gradient(135deg, var(--primary-color)05 0%, var(--background-color) 100%); }
+        .summary-clean h1 { font-size: 3rem; font-weight: 700; color: var(--primary-color); margin-bottom: 2rem; }
+        .summary-clean .summary-list { list-style: none; padding: 0; }
+        .summary-clean .summary-item { font-size: 1.8rem; margin-bottom: 1.5rem; padding: 1.2rem; border-left: 4px solid var(--primary-color); background: rgba(255,255,255,0.8); }
+      `,
+      responsive: true,
+      complexity: 'simple',
+    },
+    // 结尾页模板
+    {
+      id: 'ending-thanks',
+      name: '感谢结尾',
+      type: 'ending',
+      description: '感谢页面，包含联系方式和版权信息',
+      category: 'structure',
+      sections: [
+        {
+          id: 'ending-main',
+          type: 'main',
+          position: { x: 200, y: 300, width: 1200, height: 200 },
+          style: { textAlign: 'center' },
+          content: { type: 'title', required: true },
+        },
+        {
+          id: 'ending-contact',
+          type: 'footer',
+          position: { x: 300, y: 600, width: 1000, height: 150 },
+          style: { textAlign: 'center' },
+          content: { type: 'text', maxLength: 100 },
+        },
+      ],
+      css: `
+        .ending-thanks { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); }
+        .ending-thanks h1 { font-size: 3.5rem; font-weight: 800; color: white; margin-bottom: 2rem; }
+        .ending-thanks .contact-info { font-size: 1.4rem; color: rgba(255,255,255,0.9); }
+      `,
+      responsive: true,
+      complexity: 'simple',
+    },
+  ];
+
+  /**
+   * 从 PPT 数据生成 HTML 内容并上传到云存储
+   */
+  async generatePptHtmlWithUpload(
+    slidesData: PptSlideData[],
+    options: PptGenerationOptions = {},
+    uploadOptions?: {
+      enabled: boolean;
+      pathPrefix?: string;
+    },
+  ): Promise<PptGenerationResult> {
+    this.logger.log(
+      `开始生成 PPT HTML 并上传，幻灯片数量: ${slidesData.length}，主题: ${options.theme || 'modern'}`,
+    );
+
+    try {
+      // 生成 HTML 内容
+      const result = this.generatePptHtml(slidesData, options);
+
+      // 如果启用上传功能
+      if (uploadOptions?.enabled) {
+        await this.uploadPptToCloud(result, uploadOptions.pathPrefix);
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `PPT HTML 生成和上传失败: ${error.message}`,
+        error.stack,
+      );
+      throw new Error(`PPT 生成失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 从 PPT 数据生成 HTML 内容
+   */
+  generatePptHtml(
+    slidesData: PptSlideData[],
+    options: PptGenerationOptions = {},
+  ) {
+    this.logger.log(
+      `开始生成 PPT HTML，幻灯片数量: ${slidesData.length}，主题: ${options.theme || 'modern'}`,
+    );
+
+    try {
+      // 启用多样化布局和结构生成的默认选项
+      const enhancedOptions = {
+        enableDiverseLayouts: true,
+        autoLayoutAssignment: true,
+        autoGenerateStructure: true,
+        presentationStructure: {
+          includeCover: true,
+          includeToc: true,
+          includeSummary: true,
+          includeEnding: true,
+          sectionDividers: false,
+          pageNumbers: false,
+          progressIndicator: false,
+        },
+        ...options,
+      };
+
+      // 生成完整结构的幻灯片数据
+      const structuredSlides = this.generateStructuredSlides(
+        slidesData,
+        enhancedOptions,
+      );
+
+      // 生成完整的 HTML 文档
+      const htmlContent = this.generateHtmlDocument(
+        structuredSlides,
+        enhancedOptions,
+      );
+
+      // 收集布局类型信息
+      const layoutTypes = structuredSlides.map((slide) => slide.design.layout);
+      const uniqueLayoutTypes = [...new Set(layoutTypes)];
+
+      const result: PptGenerationResult = {
+        htmlContent,
+        slidesData: structuredSlides,
+        generatedAt: new Date().toISOString(),
+        options: enhancedOptions,
+        metadata: {
+          slideCount: structuredSlides.length,
+          totalElements: structuredSlides.reduce(
+            (sum, slide) => sum + slide.elements.length,
+            0,
+          ),
+          hasAnimations: enhancedOptions.enableAnimations ?? true,
+          theme: enhancedOptions.theme || 'modern',
+          colorScheme: enhancedOptions.colorScheme || 'blue',
+          layoutTypes: uniqueLayoutTypes,
+          hasDiverseLayouts: uniqueLayoutTypes.length > 1,
+          structureGenerated: enhancedOptions.autoGenerateStructure || false,
+        },
+      };
+
+      this.logger.log(
+        `PPT HTML 生成完成，共 ${result.metadata.slideCount} 页幻灯片，使用 ${uniqueLayoutTypes.length} 种布局类型`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(`PPT HTML 生成失败: ${error.message}`, error.stack);
+      throw new Error(`PPT 生成失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 生成完整的 HTML 文档
+   */
+  private generateHtmlDocument(
+    slidesData: PptSlideData[],
+    options: PptGenerationOptions,
+  ): string {
+    const theme = this.getThemeConfig(options);
+    const aspectRatio = options.aspectRatio || '16:9';
+
+    // 生成所有幻灯片的 HTML（使用新的布局系统）
+    const slidesHtml = slidesData
+      .map((slide, index) =>
+        this.generateSlideHtmlWithLayout(slide, index, options),
+      )
+      .join('');
+
+    // 收集所有布局模板的 CSS
+    const layoutCss = this.collectLayoutCss(slidesData, options);
+
+    return `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>专业 PPT 演示文稿</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: ${JSON.stringify(theme.colors)},
+          fontFamily: {
+            'sans': ['Inter', 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', 'Arial', 'sans-serif'],
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.8s ease-out',
+            'slide-up': 'slideUp 0.6s ease-out',
+            'scale-in': 'scaleIn 0.5s ease-out',
+            'bounce-in': 'bounceIn 0.8s ease-out',
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    /* PPT 专用样式 */
+    @page {
+      size: ${aspectRatio === '16:9' ? '1600px 900px' : aspectRatio === '4:3' ? '1200px 900px' : '210mm 297mm'};
+      margin: 0;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .ppt-slide {
+      width: ${aspectRatio === '16:9' ? '1600px' : aspectRatio === '4:3' ? '1200px' : '210mm'};
+      height: ${aspectRatio === '16:9' ? '900px' : aspectRatio === '4:3' ? '900px' : '297mm'};
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .ppt-slide:last-child {
+      page-break-after: auto;
+    }
+    
+    /* CSS 变量定义 */
+    :root {
+      --primary-color: ${theme.colors.primary};
+      --secondary-color: ${theme.colors.secondary};
+      --accent-color: ${theme.colors.accent};
+      --background-color: ${theme.colors.background};
+      --text-color: ${theme.colors.text};
+    }
+    
+    /* 现代化渐变背景 */
+    .gradient-modern {
+      background: linear-gradient(135deg, ${theme.colors.primary}15 0%, ${theme.colors.secondary}10 50%, ${theme.colors.background} 100%);
+    }
+    
+    .gradient-bold {
+      background: linear-gradient(45deg, ${theme.colors.primary}25 0%, ${theme.colors.accent}20 100%);
+    }
+    
+    .gradient-subtle {
+      background: linear-gradient(180deg, ${theme.colors.primary}08 0%, ${theme.colors.background} 100%);
+    }
+    
+    /* 标题样式 */
+    .ppt-title {
+      font-weight: 800;
+      font-size: 3.5rem;
+      line-height: 1.1;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, ${theme.colors.primary}, ${theme.colors.accent});
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-align: center;
+    }
+    
+    .ppt-subtitle {
+      font-size: 1.8rem;
+      font-weight: 400;
+      color: ${theme.colors.textLight};
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    
+    /* 内容样式 */
+    .ppt-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 2rem 4rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    
+    /* 列表样式 */
+    .ppt-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .ppt-list-item {
+      font-size: 1.8rem;
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+      padding: 1.2rem 1.5rem;
+      background: ${theme.colors.primary}08;
+      border-radius: 12px;
+      border-left: 4px solid ${theme.colors.primary};
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .ppt-list-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, ${theme.colors.primary}15, transparent);
+      transition: left 0.5s ease;
+    }
+    
+    .ppt-list-item:hover::before {
+      left: 100%;
+    }
+    
+    .ppt-list-item i {
+      color: ${theme.colors.primary};
+      font-size: 1.5rem;
+      margin-right: 1rem;
+      min-width: 1.5rem;
+    }
+    
+    /* 页码 */
+    .slide-number {
+      position: absolute;
+      bottom: 2rem;
+      right: 2rem;
+      font-size: 1rem;
+      color: ${theme.colors.primary};
+      opacity: 0.7;
+      font-weight: 600;
+      background: ${theme.colors.primary}10;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+    
+    /* 动画效果 */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(40px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    
+    @keyframes bounceIn {
+      0% { opacity: 0; transform: scale(0.3); }
+      50% { opacity: 1; transform: scale(1.05); }
+      70% { transform: scale(0.95); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    
+    .animate-fade-in { animation: fadeIn 0.8s ease-out; }
+    .animate-slide-up { animation: slideUp 0.6s ease-out; }
+    .animate-scale-in { animation: scaleIn 0.5s ease-out; }
+    .animate-bounce-in { animation: bounceIn 0.8s ease-out; }
+    
+    /* 响应式设计 */
+    @media print {
+      body { margin: 0; }
+      .ppt-slide { page-break-after: always; }
+      .ppt-slide:last-child { page-break-after: auto; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    
+    /* 布局模板样式 */
+    ${layoutCss}
+  </style>
+</head>
+<body>
+  ${slidesHtml}
+  <script>
+    // 初始化 Lucide 图标
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  </script>
+</body>
+</html>`;
+  }
+
+  /**
+   * 生成单个幻灯片的 HTML
+   */
+  private generateSlideHtml(
+    slide: PptSlideData,
+    index: number,
+    options: PptGenerationOptions,
+  ): string {
+    const { design } = slide;
+    const enableAnimations = options.enableAnimations ?? true;
+
+    // 背景样式
+    const backgroundClass = this.getBackgroundClass(design.background);
+
+    // 仅生成自定义元素
+    const elementsHtml = slide.elements
+      .map((element, elementIndex) =>
+        this.generateElementHtml(element, elementIndex, enableAnimations),
+      )
+      .join('');
+
+    return `
+      <div class="ppt-slide ${backgroundClass}" style="background: ${this.getBackgroundStyle(design.background)};">
+        <div class="ppt-content" style="position: relative; width: 100%; height: 100%; padding: 0; max-width: none; margin: 0;">
+          ${elementsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * 生成元素 HTML
+   */
+  private generateElementHtml(
+    element: PptElement,
+    index: number,
+    enableAnimations: boolean,
+  ): string {
+    const animationClass = enableAnimations ? 'animate-fade-in' : '';
+    const animationDelay = `${0.3 + index * 0.1}s`;
+
+    const style = this.getElementStyle(element);
+    const commonAttrs = `class="${animationClass}" style="${style} animation-delay: ${animationDelay};"`;
+
+    switch (element.type) {
+      case 'text': {
+        const textContent =
+          typeof element.content === 'string' ? element.content : '';
+        return `
+          <div ${commonAttrs}>
+            ${textContent}
+          </div>
+        `;
+      }
+      case 'icon':
+        return this.generateIconHtml(element, commonAttrs);
+      case 'shape':
+        return this.generateShapeHtml(element, commonAttrs);
+      case 'chart':
+        return this.generateChartHtml(element, commonAttrs);
+      case 'image': {
+        const imageUrl =
+          typeof element.content === 'string' ? element.content : '';
+        return `
+          <div ${commonAttrs} style="${style} overflow: hidden;">
+            <img src="${imageUrl}" alt="Image" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+          </div>
+        `;
+      }
+      case 'divider':
+        return `
+          <div ${commonAttrs}>
+            <hr style="border: 0; border-top: 2px solid ${element.style.color || 'currentColor'}; width: 100%;">
+          </div>
+        `;
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * 生成图标 HTML (支持 FontAwesome 和 Lucide)
+   */
+  private generateIconHtml(element: PptElement, attrs: string): string {
+    const content = element.content as any;
+    const iconName = content.iconName || '';
+    const size = content.size || 24;
+    const color = content.color || element.style.color || 'currentColor';
+
+    // 处理 Lucide 图标
+    if (iconName.startsWith('lucide:')) {
+      const name = iconName.replace('lucide:', '');
+      return `
+        <div ${attrs} style="${attrs.split('style="')[1].replace('"', '')} display: flex; align-items: center; justify-content: center;">
+          <i data-lucide="${name}" style="width: ${size}px; height: ${size}px; color: ${color};"></i>
+        </div>
+      `;
+    }
+
+    // 默认 FontAwesome
+    return `
+      <div ${attrs} style="${attrs.split('style="')[1].replace('"', '')} display: flex; align-items: center; justify-content: center;">
+        <i class="${iconName}" style="font-size: ${size}px; color: ${color};"></i>
+      </div>
+    `;
+  }
+
+  /**
+   * 生成形状 HTML
+   */
+  private generateShapeHtml(element: PptElement, attrs: string): string {
+    const content = element.content as any;
+    const type = content.type || 'rectangle';
+    const fill = content.fill || element.style.backgroundColor || '#ccc';
+    const stroke = content.stroke || 'none';
+    const strokeWidth = Number(content.strokeWidth) || 0;
+
+    let svgContent = '';
+    switch (type) {
+      case 'circle':
+        svgContent = `<circle cx="50%" cy="50%" r="48%" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+        break;
+      case 'triangle':
+        svgContent = `<polygon points="50,2 98,98 2,98" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+        break;
+      case 'star':
+        svgContent = `<polygon points="50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+        break;
+      case 'line':
+        svgContent = `<line x1="0" y1="50%" x2="100%" y2="50%" stroke="${fill}" stroke-width="${Math.max(2, strokeWidth || 2)}" />`;
+        break;
+      default: {
+        // rectangle
+        const rx = element.style.borderRadius
+          ? parseInt(String(element.style.borderRadius))
+          : 0;
+        svgContent = `<rect x="0" y="0" width="100%" height="100%" rx="${rx}" ry="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+      }
+    }
+
+    return `
+      <div ${attrs}>
+        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+          ${svgContent}
+        </svg>
+      </div>
+    `;
+  }
+
+  /**
+   * 生成图表 HTML (使用 Chart.js)
+   */
+  private generateChartHtml(element: PptElement, attrs: string): string {
+    const content = element.content as any;
+    const chartId = `chart-${element.id}`;
+    const chartType = content.type || 'bar';
+
+    // 特殊处理数字卡片
+    if (chartType === 'number-card') {
+      const data = content.datasets?.[0]?.data?.[0] || 0;
+      const label = content.labels?.[0] || content.datasets?.[0]?.label || '';
+      const color = content.datasets?.[0]?.backgroundColor || 'currentColor';
+
+      return `
+        <div ${attrs} style="${attrs.split('style="')[1].replace('"', '')} display: flex; flex-direction: column; align-items: center; justify-content: center; background: ${element.style.backgroundColor || 'rgba(255,255,255,0.1)'}; backdrop-filter: blur(10px); border-radius: 16px;">
+          <div style="font-size: 4em; font-weight: 800; color: ${color};">${data}</div>
+          <div style="font-size: 1.2em; opacity: 0.8; margin-top: 0.5em;">${label}</div>
+        </div>
+      `;
+    }
+
+    // Chart.js 配置
+    const chartConfig = {
+      type: chartType === 'horizontal-bar' ? 'bar' : chartType,
+      data: {
+        labels: content.labels,
+        datasets: content.datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: chartType === 'horizontal-bar' ? 'y' : 'x',
+        plugins: {
+          legend: {
+            display: content.options?.showLegend ?? true,
+            position: 'bottom',
+            labels: { color: '#666' },
+          },
+          title: {
+            display: !!content.options?.title,
+            text: content.options?.title || '',
+          },
+        },
+        scales: {
+          y: { beginAtZero: true },
+          x: { display: true },
+        },
+        ...content.options,
+      },
+    };
+
+    return `
+      <div ${attrs}>
+        <canvas id="${chartId}"></canvas>
+        <script>
+          (function() {
+            const ctx = document.getElementById('${chartId}').getContext('2d');
+            new Chart(ctx, ${JSON.stringify(chartConfig)});
+          })();
+        </script>
+      </div>
+    `;
+  }
+
+  /**
+   * 获取主题配置
+   */
+  private getThemeConfig(options: PptGenerationOptions) {
+    const theme = options.theme || 'modern';
+
+    const themes = {
+      modern: {
+        colors: {
+          primary: '#3b82f6',
+          secondary: '#8b5cf6',
+          accent: '#06b6d4',
+          background: '#ffffff',
+          text: '#1f2937',
+          textLight: '#6b7280',
+        },
+      },
+      creative: {
+        colors: {
+          primary: '#ec4899',
+          secondary: '#f59e0b',
+          accent: '#10b981',
+          background: '#fef3c7',
+          text: '#78350f',
+          textLight: '#92400e',
+        },
+      },
+      tech: {
+        colors: {
+          primary: '#059669',
+          secondary: '#0891b2',
+          accent: '#7c3aed',
+          background: '#f0fdfa',
+          text: '#064e3b',
+          textLight: '#047857',
+        },
+      },
+    };
+
+    return themes[theme] || themes.modern;
+  }
+
+  /**
+   * 获取背景样式类
+   */
+  private getBackgroundClass(
+    background: PptSlideData['design']['background'],
+  ): string {
+    switch (background.type) {
+      case 'gradient':
+        return 'gradient-modern';
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * 获取背景样式
+   */
+  private getBackgroundStyle(
+    background: PptSlideData['design']['background'],
+  ): string {
+    switch (background.type) {
+      case 'solid':
+        return background.value;
+      case 'gradient':
+        return background.value;
+      case 'pattern':
+        return `${background.value} url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23ddd" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>')`;
+      default:
+        return background.value;
+    }
+  }
+
+  /**
+   * 获取元素样式
+   */
+  private getElementStyle(element: PptElement): string {
+    const { position, style } = element;
+
+    const cssStyles: string[] = [
+      `position: absolute`,
+      `left: ${position.x}px`,
+      `top: ${position.y}px`,
+      `width: ${position.width}px`,
+      `height: ${position.height}px`,
+    ];
+
+    if (style.backgroundColor) {
+      cssStyles.push(`background-color: ${style.backgroundColor}`);
+    }
+    if (style.color) {
+      cssStyles.push(`color: ${style.color}`);
+    }
+    if (style.fontSize) {
+      cssStyles.push(`font-size: ${style.fontSize}px`);
+    }
+    if (style.fontWeight) {
+      cssStyles.push(`font-weight: ${style.fontWeight}`);
+    }
+    if (style.textAlign) {
+      cssStyles.push(`text-align: ${style.textAlign}`);
+    }
+    if (style.borderRadius) {
+      cssStyles.push(`border-radius: ${style.borderRadius}px`);
+    }
+    if (style.padding) {
+      cssStyles.push(`padding: ${style.padding}px`);
+    }
+    if (style.margin) {
+      cssStyles.push(`margin: ${style.margin}px`);
+    }
+    if (style.border) {
+      cssStyles.push(`border: ${style.border}`);
+    }
+    if (style.boxShadow) {
+      cssStyles.push(`box-shadow: ${style.boxShadow}`);
+    }
+    if (style.opacity) {
+      cssStyles.push(`opacity: ${style.opacity}`);
+    }
+    if (style.transform) {
+      cssStyles.push(`transform: ${style.transform}`);
+    }
+
+    return cssStyles.join('; ');
+  }
+
+  /**
+   * HTML 转义
+   */
+  private escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;',
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  /**
+   * 上传 PPT 到云存储
+   */
+  private async uploadPptToCloud(
+    result: PptGenerationResult,
+    pathPrefix?: string,
+  ): Promise<void> {
+    try {
+      this.logger.log('开始上传 PPT 到云存储');
+
+      // 生成文件路径
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `ppt-${timestamp}-${result.metadata.slideCount}slides.html`;
+      const path = pathPrefix ? `${pathPrefix}/${filename}` : filename;
+
+      // 准备上传数据
+      const htmlBuffer = Buffer.from(result.htmlContent, 'utf-8');
+
+      // 上传到 Bunny 云存储
+      const uploadResult = await uploadBufferToBunny({
+        path,
+        contentType: 'text/html; charset=utf-8',
+        data: new Uint8Array(htmlBuffer),
+      });
+
+      // 更新结果中的云存储信息
+      result.cloudStorage = {
+        pptUrl: uploadResult.publicUrl || undefined,
+        storagePath: uploadResult.path,
+        fileSize: htmlBuffer.length,
+        uploadedAt: new Date().toISOString(),
+        uploadStatus: 'success',
+      };
+
+      this.logger.log(
+        `PPT 上传成功: ${uploadResult.path}, 公共 URL: ${uploadResult.publicUrl}`,
+      );
+    } catch (error) {
+      this.logger.error(`PPT 上传失败: ${error.message}`, error.stack);
+
+      // 更新结果中的错误信息
+      result.cloudStorage = {
+        uploadStatus: 'failed',
+        error: error.message,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      // 可以选择重新抛出错误或继续执行
+      throw new Error(`PPT 上传失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 重试上传 PPT 到云存储
+   */
+  async retryUploadPpt(
+    result: PptGenerationResult,
+    maxRetries: number = 3,
+    retryDelay: number = 1000,
+  ): Promise<PptGenerationResult> {
+    this.logger.log(`开始重试上传 PPT，最大重试次数: ${maxRetries}`);
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // 清除之前的错误信息
+        if (result.cloudStorage) {
+          result.cloudStorage.error = undefined;
+          result.cloudStorage.uploadStatus = 'pending';
+        }
+
+        // 重新上传
+        await this.uploadPptToCloud(result);
+
+        this.logger.log(`PPT 重试上传成功，尝试次数: ${attempt}`);
+        return result;
+      } catch (error) {
+        lastError = error as Error;
+        this.logger.warn(
+          `PPT 重试上传失败，尝试次数: ${attempt}/${maxRetries}, 错误: ${error.message}`,
+        );
+
+        // 如果不是最后一次尝试，等待后重试
+        if (attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, retryDelay * attempt),
+          );
+        }
+      }
+    }
+
+    // 所有重试都失败了
+    this.logger.error(`PPT 重试上传最终失败，已尝试 ${maxRetries} 次`);
+    throw lastError || new Error('PPT 重试上传失败');
+  }
+
+  /**
+   * 获取现代设计模板
+   */
+  getModernDesignTemplate(
+    templateId: string,
+  ): ModernDesignTemplate | undefined {
+    return this.modernDesignTemplates.find(
+      (template) => template.id === templateId,
+    );
+  }
+
+  /**
+   * 获取所有现代设计模板
+   */
+  getAllModernDesignTemplates(): ModernDesignTemplate[] {
+    return this.modernDesignTemplates;
+  }
+
+  /**
+   * 生成动态渐变背景
+   */
+  generateDynamicGradient(colors: string[], angle: number = 135): string {
+    if (colors.length < 2) {
+      return `linear-gradient(${angle}deg, ${colors[0] || '#667eea'}, ${colors[1] || '#764ba2'})`;
+    }
+
+    const gradientStops = colors
+      .map((color, index) => {
+        const position = (index / (colors.length - 1)) * 100;
+        return `${color} ${position}%`;
+      })
+      .join(', ');
+
+    return `linear-gradient(${angle}deg, ${gradientStops})`;
+  }
+
+  /**
+   * 生成现代光晕效果CSS
+   */
+  generateGlowEffect(
+    color: string,
+    intensity: 'subtle' | 'medium' | 'strong' = 'medium',
+  ): string {
+    const intensityMap = {
+      subtle: { blur: '10px', spread: '0px', opacity: '0.3' },
+      medium: { blur: '20px', spread: '0px', opacity: '0.5' },
+      strong: { blur: '40px', spread: '5px', opacity: '0.7' },
+    };
+
+    const config = intensityMap[intensity];
+    return `0 0 ${config.blur} ${config.spread} ${color}${config.opacity}`;
+  }
+
+  /**
+   * 生成网格图案背景
+   */
+  generateGridPattern(
+    gridSize: number = 40,
+    dotSize: number = 2,
+    color: string = 'rgba(255, 255, 255, 0.15)',
+  ): string {
+    return `radial-gradient(circle at ${dotSize}px ${dotSize}px, ${color} ${dotSize}px, transparent 0), 
+            repeating-linear-gradient(0deg, transparent, transparent ${gridSize - dotSize}px, ${color} ${gridSize}px)`;
+  }
+
+  /**
+   * 生成现代设计CSS样式
+   */
+  generateModernDesignStyles(
+    templateId: string,
+    customizations?: {
+      primaryColor?: string;
+      secondaryColor?: string;
+      animationSpeed?: number;
+    },
+  ): string {
+    const template = this.getModernDesignTemplate(templateId);
+    if (!template) {
+      return '';
+    }
+
+    const { styles } = template;
+    const customPrimary = customizations?.primaryColor || styles.colors.primary;
+    const customSecondary =
+      customizations?.secondaryColor || styles.colors.secondary;
+    const animationSpeed = customizations?.animationSpeed || 1;
+
+    return `
+    /* 现代设计基础样式 */
+    .modern-slide {
+      background: ${styles.background};
+      border: ${styles.border || 'none'};
+      border-radius: ${styles.borderRadius || '8px'};
+      box-shadow: ${styles.boxShadow || 'none'};
+      ${styles.backdropFilter ? `backdrop-filter: ${styles.backdropFilter};` : ''}
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 现代设计颜色变量 */
+    .modern-slide {
+      --primary-color: ${customPrimary};
+      --secondary-color: ${customSecondary};
+      --accent-color: ${styles.colors.accent};
+      --text-color: ${styles.colors.text};
+    }
+
+    /* 现代标题样式 */
+    .modern-slide h1 {
+      color: var(--primary-color);
+      font-size: 2.5rem;
+      font-weight: 700;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      margin-bottom: 1.5rem;
+    }
+
+    /* 现代内容样式 */
+    .modern-slide p {
+      color: var(--text-color);
+      font-size: 1.2rem;
+      line-height: 1.8;
+      margin-bottom: 1rem;
+    }
+
+    /* 现代强调样式 */
+    .modern-slide .highlight {
+      background: linear-gradient(135deg, var(--primary-color)20, var(--secondary-color)20);
+      border-left: 4px solid var(--primary-color);
+      padding: 1rem 1.5rem;
+      margin: 1.5rem 0;
+      border-radius: 8px;
+      backdrop-filter: blur(5px);
+    }
+
+    /* 现代光晕效果 */
+    .modern-slide::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, var(--primary-color)10 0%, transparent 70%);
+      animation: ${animationSpeed * 4}s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    /* 现代动画 */
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.05); }
+    }
+
+    @keyframes gradient-shift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+      .modern-slide {
+        padding: 1.5rem;
+        margin: 1rem;
+      }
+      .modern-slide h1 {
+        font-size: 2rem;
+      }
+      .modern-slide p {
+        font-size: 1rem;
+      }
+    }
+    `;
+  }
+
+  /**
+   * 生成现代设计动画CSS
+   */
+  generateModernAnimations(effects: string[], speed: number = 1): string {
+    const animations: string[] = [];
+
+    effects.forEach((effect) => {
+      switch (effect) {
+        case 'glass-effect':
+          animations.push(`
+            @keyframes glass-shimmer {
+              0% { opacity: 0.8; }
+              50% { opacity: 1; }
+              100% { opacity: 0.8; }
+            }
+            .glass-shimmer {
+              animation: glass-shimmer ${3 * speed}s ease-in-out infinite;
+            }
+          `);
+          break;
+        case 'gradient-bg':
+          animations.push(`
+            .gradient-animated {
+              background-size: 200% 200%;
+              animation: gradient-shift ${15 * speed}s ease infinite;
+            }
+          `);
+          break;
+        case 'neon-glow':
+          animations.push(`
+            @keyframes neon-flicker {
+              0%, 100% { box-shadow: 0 0 20px var(--primary-color); }
+              50% { box-shadow: 0 0 40px var(--primary-color), 0 0 60px var(--secondary-color); }
+            }
+            .neon-glow {
+              animation: neon-flicker ${2 * speed}s ease-in-out infinite;
+            }
+          `);
+          break;
+        case 'tech-grid':
+          animations.push(`
+            @keyframes grid-pulse {
+              0%, 100% { opacity: 0.3; }
+              50% { opacity: 0.6; }
+            }
+            .tech-grid {
+              animation: grid-pulse ${4 * speed}s ease-in-out infinite;
+            }
+          `);
+          break;
+      }
+    });
+
+    return animations.join('\n');
+  }
+
+  /**
+   * 根据布局类型获取对应的模板
+   */
+  private getLayoutTemplate(
+    layoutType: PageLayoutType,
+  ): PageLayoutTemplate | null {
+    return (
+      this.layoutTemplates.find((template) => template.type === layoutType) ||
+      null
+    );
+  }
+
+  /**
+   * 生成布局特定的 HTML 结构
+   */
+  private generateLayoutHtml(
+    slideData: PptSlideData,
+    template: PageLayoutTemplate,
+  ): string {
+    const slideId = slideData.slideId;
+    const layoutClass = template.id;
+
+    let html = `<div class="ppt-slide ${layoutClass}" id="${slideId}">`;
+
+    // 添加模板的各个区域
+    template.sections.forEach((section) => {
+      const sectionContent = this.generateSectionContent(section, slideData);
+      const sectionStyle = this.generateSectionStyle(section);
+
+      html += `<div class="section-${section.id}" style="${sectionStyle}">`;
+      html += sectionContent;
+      html += `</div>`;
+    });
+
+    html += `</div>`;
+
+    return html;
+  }
+
+  /**
+   * 生成区域内容
+   */
+  private generateSectionContent(
+    section: LayoutSection,
+    slideData: PptSlideData,
+  ): string {
+    const slideTitle = slideData.metadata.title || '';
+    const textElements = slideData.elements.filter((el) => el.type === 'text');
+    const fullText = textElements
+      .map((el) => (typeof el.content === 'string' ? el.content : ''))
+      .join(' ');
+
+    switch (section.content.type) {
+      case 'title':
+        return `<h1>${this.escapeHtml(slideTitle)}</h1>`;
+
+      case 'text':
+        return `<p>${this.escapeHtml(fullText)}</p>`;
+
+      case 'bullets': {
+        const bulletElements = slideData.elements.filter(
+          (el) => el.type === 'text' && typeof el.content === 'string',
+        );
+        if (bulletElements.length > 0) {
+          return `<ul class="content-list">
+            ${bulletElements
+              .map(
+                (el) =>
+                  `<li class="content-item">${this.escapeHtml(el.content as string)}</li>`,
+              )
+              .join('')}
+          </ul>`;
+        }
+        return `<div class="content-text"><p>${this.escapeHtml(fullText)}</p></div>`;
+      }
+
+      case 'cards': {
+        const bulletElements = slideData.elements.filter(
+          (el) => el.type === 'text' && typeof el.content === 'string',
+        );
+        if (bulletElements.length > 0) {
+          return `<div class="cards-container">
+            ${bulletElements
+              .map(
+                (el, index) => `
+              <div class="card">
+                <div class="card-icon">📋</div>
+                <div class="card-title">要点 ${index + 1}</div>
+                <div class="card-content">${this.escapeHtml(el.content as string)}</div>
+              </div>
+            `,
+              )
+              .join('')}
+          </div>`;
+        }
+        return '';
+      }
+
+      case 'image': {
+        const imageElement = slideData.elements.find(
+          (el) => el.type === 'image',
+        );
+        if (imageElement && typeof imageElement.content === 'string') {
+          return `<div class="image-container">
+            <img src="${imageElement.content}" alt="Slide image" style="width: 100%; height: 100%; object-fit: cover;" />
+          </div>`;
+        }
+        return '';
+      }
+
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * 生成区域样式
+   */
+  private generateSectionStyle(section: LayoutSection): string {
+    const styles: string[] = [];
+
+    // 位置样式
+    styles.push(`position: absolute`);
+    styles.push(`left: ${section.position.x}px`);
+    styles.push(`top: ${section.position.y}px`);
+    styles.push(`width: ${section.position.width}px`);
+    styles.push(`height: ${section.position.height}px`);
+
+    // 自定义样式
+    if (section.style.backgroundColor) {
+      styles.push(`background-color: ${section.style.backgroundColor}`);
+    }
+    if (section.style.border) {
+      styles.push(`border: ${section.style.border}`);
+    }
+    if (section.style.borderRadius) {
+      styles.push(`border-radius: ${section.style.borderRadius}`);
+    }
+    if (section.style.padding) {
+      styles.push(`padding: ${section.style.padding}`);
+    }
+    if (section.style.margin) {
+      styles.push(`margin: ${section.style.margin}`);
+    }
+    if (section.style.textAlign) {
+      styles.push(`text-align: ${section.style.textAlign}`);
+    }
+
+    return styles.join('; ');
+  }
+
+  /**
+   * 生成完整演示结构的幻灯片数据（增强版）
+   */
+  private generateStructuredSlides(
+    originalSlides: PptSlideData[],
+    options: PptGenerationOptions,
+  ): PptSlideData[] {
+    if (!options.autoGenerateStructure) {
+      return originalSlides;
+    }
+
+    const structuredSlides: PptSlideData[] = [];
+    const structure = options.presentationStructure || {
+      includeCover: true,
+      includeToc: true,
+      includeSummary: true,
+      includeEnding: true,
+      sectionDividers: false,
+      pageNumbers: false,
+      progressIndicator: false,
+    };
+
+    let slideIndex = 0;
+
+    // 添加封面页
+    if (structure.includeCover && originalSlides.length > 0) {
+      const firstSlide = originalSlides[0];
+      const title = firstSlide.metadata.title || '演示文稿';
+      structuredSlides.push({
+        slideId: `slide-cover`,
+        design: {
+          ...firstSlide.design,
+          layout: 'cover',
+        },
+        elements: [
+          {
+            id: 'cover-title',
+            type: 'text',
+            position: { x: 0, y: 300, width: 1600, height: 200 },
+            style: {
+              fontSize: 80,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              color: firstSlide.design.colors.text,
+            },
+            content: title,
+          },
+          {
+            id: 'cover-subtitle',
+            type: 'text',
+            position: { x: 0, y: 500, width: 1600, height: 100 },
+            style: {
+              fontSize: 36,
+              textAlign: 'center',
+              opacity: 0.8,
+              color: firstSlide.design.colors.text,
+            },
+            content: '演示文稿',
+          },
+        ],
+        metadata: {
+          slideNumber: ++slideIndex,
+          totalSlides:
+            originalSlides.length + this.getStructurePageCount(structure),
+          section: '封面',
+          title: title,
+        },
+      });
+    }
+
+    // 添加目录页
+    if (structure.includeToc && originalSlides.length > 2) {
+      const tocElements: PptElement[] = [
+        {
+          id: 'toc-header',
+          type: 'text',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { fontSize: 60, fontWeight: 'bold', textAlign: 'center' },
+          content: '目录',
+        },
+      ];
+
+      originalSlides.forEach((slide, idx) => {
+        tocElements.push({
+          id: `toc-item-${idx}`,
+          type: 'text',
+          position: { x: 300, y: 250 + idx * 60, width: 1000, height: 50 },
+          style: { fontSize: 32, textAlign: 'left' },
+          content: `${idx + 1}. ${slide.metadata.title || ''}`,
+        });
+      });
+
+      structuredSlides.push({
+        slideId: `slide-toc`,
+        design: {
+          theme: originalSlides[0]?.design.theme || 'modern',
+          layout: 'toc',
+          colors: originalSlides[0]?.design.colors || this.getDefaultColors(),
+          typography:
+            originalSlides[0]?.design.typography || this.getDefaultTypography(),
+          background: {
+            type: 'solid',
+            value: '#ffffff',
+          },
+        },
+        elements: tocElements,
+        metadata: {
+          slideNumber: ++slideIndex,
+          totalSlides:
+            originalSlides.length + this.getStructurePageCount(structure),
+          section: '目录',
+          title: '目录',
+        },
+      });
+    }
+
+    // 添加原始内容页
+    const contentSlides = originalSlides.map((slide) => ({
+      ...slide,
+      metadata: {
+        ...slide.metadata,
+        slideNumber: ++slideIndex,
+        totalSlides:
+          originalSlides.length + this.getStructurePageCount(structure),
+      },
+    }));
+
+    structuredSlides.push(...contentSlides);
+
+    // 添加总结页
+    if (structure.includeSummary && originalSlides.length > 1) {
+      const summaryElements: PptElement[] = [
+        {
+          id: 'summary-header',
+          type: 'text',
+          position: { x: 100, y: 80, width: 1400, height: 120 },
+          style: { fontSize: 60, fontWeight: 'bold', textAlign: 'center' },
+          content: '总结',
+        },
+      ];
+
+      originalSlides.slice(-3).forEach((slide, idx) => {
+        summaryElements.push({
+          id: `summary-item-${idx}`,
+          type: 'text',
+          position: { x: 200, y: 250 + idx * 100, width: 1200, height: 80 },
+          style: { fontSize: 36, textAlign: 'left' },
+          content: `• ${slide.metadata.title || '关键点'}`,
+        });
+      });
+
+      structuredSlides.push({
+        slideId: `slide-summary`,
+        design: {
+          theme: originalSlides[0]?.design.theme || 'modern',
+          layout: 'summary',
+          colors: originalSlides[0]?.design.colors || this.getDefaultColors(),
+          typography:
+            originalSlides[0]?.design.typography || this.getDefaultTypography(),
+          background: {
+            type: 'gradient',
+            value: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+          },
+        },
+        elements: summaryElements,
+        metadata: {
+          slideNumber: ++slideIndex,
+          totalSlides:
+            originalSlides.length + this.getStructurePageCount(structure),
+          section: '总结',
+          title: '总结',
+        },
+      });
+    }
+
+    // 添加结尾页
+    if (structure.includeEnding) {
+      structuredSlides.push({
+        slideId: `slide-ending`,
+        design: {
+          theme: originalSlides[0]?.design.theme || 'modern',
+          layout: 'ending',
+          colors: originalSlides[0]?.design.colors || this.getDefaultColors(),
+          typography:
+            originalSlides[0]?.design.typography || this.getDefaultTypography(),
+          background: {
+            type: 'gradient',
+            value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          },
+        },
+        elements: [
+          {
+            id: 'ending-thanks',
+            type: 'text',
+            position: { x: 0, y: 300, width: 1600, height: 200 },
+            style: {
+              fontSize: 100,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              color: '#ffffff',
+            },
+            content: '谢谢',
+          },
+          {
+            id: 'ending-contact',
+            type: 'text',
+            position: { x: 0, y: 550, width: 1600, height: 100 },
+            style: {
+              fontSize: 32,
+              textAlign: 'center',
+              color: 'rgba(255,255,255,0.8)',
+            },
+            content: '感谢聆听',
+          },
+        ],
+        metadata: {
+          slideNumber: ++slideIndex,
+          totalSlides:
+            originalSlides.length + this.getStructurePageCount(structure),
+          section: '结尾',
+          title: '谢谢',
+        },
+      });
+    }
+
+    return structuredSlides;
+  }
+
+  /**
+   * 获取结构页面数量
+   */
+  private getStructurePageCount(structure: PresentationStructure): number {
+    let count = 0;
+    if (structure.includeCover) count++;
+    if (structure.includeToc) count++;
+    if (structure.includeSummary) count++;
+    if (structure.includeEnding) count++;
+    return count;
+  }
+
+  /**
+   * 获取默认颜色配置
+   */
+  private getDefaultColors() {
+    return {
+      primary: '#4A48E2',
+      secondary: '#6366F1',
+      accent: '#8B5CF6',
+      background: '#ffffff',
+      text: '#333333',
+      textLight: '#666666',
+    };
+  }
+
+  /**
+   * 获取默认字体配置
+   */
+  private getDefaultTypography() {
+    return {
+      fontFamily: 'Inter',
+      headingFont: 'Inter',
+      bodyFont: 'Inter',
+      baseSize: 16,
+      headingScale: [2.5, 2, 1.5, 1.25, 1],
+    };
+  }
+
+  /**
+   * 使用布局模板生成幻灯片 HTML
+   */
+  private generateSlideHtmlWithLayout(
+    slide: PptSlideData,
+    index: number,
+    options: PptGenerationOptions,
+  ): string {
+    // 如果启用了多样化布局，使用新的布局系统
+    if (options.enableDiverseLayouts) {
+      const template = this.getLayoutTemplate(slide.design.layout);
+      if (template) {
+        return this.generateLayoutHtml(slide, template);
+      }
+    }
+
+    // 使用直接渲染元素的方法
+    return this.generateSlideHtml(slide, index, options);
+  }
+
+  /**
+   * 收集所有布局模板的 CSS
+   */
+  private collectLayoutCss(
+    slidesData: PptSlideData[],
+    options: PptGenerationOptions,
+  ): string {
+    if (!options.enableDiverseLayouts) {
+      return '';
+    }
+
+    const usedLayouts = new Set<PageLayoutType>();
+    slidesData.forEach((slide) => {
+      usedLayouts.add(slide.design.layout);
+    });
+
+    const cssRules: string[] = [];
+
+    usedLayouts.forEach((layoutType) => {
+      const template = this.getLayoutTemplate(layoutType);
+      if (template) {
+        cssRules.push(template.css);
+      }
+    });
+
+    return cssRules.join('\n\n');
+  }
+
+  async generatePptWithAi(
+    slides: StoryboardSlide[],
+    context: GenerationContext,
+    options: {
+      themeConfig?: ThemeConfig;
+      concurrency?: number;
+      maxRetries?: number;
+      enableCache?: boolean;
+      uploadToCloud?: boolean;
+      skipValidation?: boolean; // 新增：跳过HTML验证以提升速度
+    } = {},
+  ): Promise<{
+    htmlPages: string[];
+    results: any[];
+    stats: { total: number; success: number; failed: number; invalid: number };
+    uploadUrl?: string;
+  }> {
+    if (!this.aiHtmlGenerator) {
+      throw new Error('AI HTML Generator 未初始化');
+    }
+
+    this.logger.log(`开始使用 AI 生成 ${slides.length} 页 PPT`);
+
+    const results = await this.aiHtmlGenerator.generateAllSlides(
+      slides,
+      context,
+      {
+        themeConfig: options.themeConfig,
+        concurrency: options.concurrency || 3,
+        maxRetries: options.maxRetries || 2,
+        enableCache: options.enableCache !== false,
+        skipValidation: options.skipValidation, // 传递跳过验证选项
+      },
+    );
+
+    const slideFragments = results
+      .filter((r) => r.status === 'success')
+      .map((r) => r.html);
+
+    const stats = {
+      total: results.length,
+      success: results.filter((r) => r.status === 'success').length,
+      failed: results.filter((r) => r.status === 'failed').length,
+      invalid: results.filter((r) => r.status === 'invalid').length,
+    };
+
+    this.logger.log(
+      `AI 生成完成: 成功 ${stats.success}/${stats.total}, 失败 ${stats.failed}, 无效 ${stats.invalid}`,
+    );
+
+    // 生成合并的完整文档
+    const mergedHtml = this.wrapAllSlides(slideFragments);
+
+    let uploadUrl: string | undefined;
+
+    if (options.uploadToCloud && mergedHtml) {
+      const buffer = Buffer.from(mergedHtml, 'utf-8');
+      const result = await uploadBufferToBunny({
+        path: `ppt-ai-${Date.now()}.html`,
+        contentType: 'text/html',
+        data: new Uint8Array(buffer),
+      });
+      uploadUrl = result.publicUrl || undefined;
+      this.logger.log(`PPT 已上传到云存储: ${uploadUrl}`);
+    }
+
+    return {
+      htmlPages: [mergedHtml],
+      results,
+      stats,
+      uploadUrl,
+    };
+  }
+
+  private wrapAllSlides(fragments: string[]): string {
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI PPT 演示</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { 
+      margin: 0; 
+      padding: 0; 
+      background: #f5f5f5;
+    }
+    .slide-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+    }
+    .slide-wrapper {
+      position: relative;
+      width: 1280px;
+      height: 720px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+      background: #ffffff;
+    }
+    .slide-wrapper:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    @media print {
+      body { background: #ffffff; }
+      .slide-container { padding: 0; gap: 0; }
+      .slide-wrapper {
+        box-shadow: none;
+        border-radius: 0;
+        page-break-after: always;
+        break-after: page;
+        break-after: page;
+      }
+      .slide-wrapper:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="slide-container">
+    ${fragments
+      .map(
+        (fragment) => `
+    <div class="slide-wrapper">
+      ${fragment}
+    </div>
+    `,
+      )
+      .join('\n')}
+  </div>
+</body>
+</html>`;
+  }
+}

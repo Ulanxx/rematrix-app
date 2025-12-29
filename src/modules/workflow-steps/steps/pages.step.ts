@@ -1,3 +1,10 @@
+import {
+  PptService,
+  StoryboardSlide,
+  GenerationContext,
+  AiGenerationOptions,
+  PptGenerationResult,
+} from '../../ppt/ppt.service';
 import { JobStage, ArtifactType } from '@prisma/client';
 import { z } from 'zod';
 import {
@@ -5,11 +12,8 @@ import {
   createStepDefinition,
   ExecutionContext,
 } from '../step-definition.interface';
-import {
-  PptService,
-  PptSlideData,
-  PptGenerationOptions,
-} from '../../ppt/ppt.service';
+import { AiHtmlGeneratorService } from '../../ppt/ai-html-generator.service';
+import { HtmlValidatorService } from '../../ppt/html-validator.service';
 
 /**
  * PAGES 阶段的输出 Schema (增强版支持 PPT 生成和合并)
@@ -273,28 +277,55 @@ async function customExecutePagesStep(
   const pagesData = inputData as {
     script: any;
     config?: {
-      pptOptions?: PptGenerationOptions;
+      pptOptions?: AiGenerationOptions;
     };
-    pptSlidesData: PptSlideData[]; // 必须由 AI 生成
+    pptSlidesData: any[]; // 必须由 AI 生成
+    slides?: StoryboardSlide[];
+    context?: GenerationContext;
   };
 
   // 验证必要字段
-  if (!pagesData.pptSlidesData || pagesData.pptSlidesData.length === 0) {
+  if (
+    (!pagesData.pptSlidesData || pagesData.pptSlidesData.length === 0) &&
+    (!pagesData.slides || pagesData.slides.length === 0)
+  ) {
     throw new Error('PPT 幻灯片数据不能为空，请确保 AI 生成步骤已成功完成');
   }
 
   const config = pagesData.config || {};
   const pptOptions = config.pptOptions || {};
 
-  // 初始化服务
-  const pptService = new PptService();
+  // 初始化服务 (PptService 现在需要注入 AiHtmlGeneratorService)
+  // 在非 NestJS DI 环境下手动初始化
+  const htmlValidator = new HtmlValidatorService();
+  const aiHtmlGenerator = new AiHtmlGeneratorService(htmlValidator);
+  const pptService = new PptService(aiHtmlGenerator);
 
-  // 1. 使用 AI 生成的幻灯片数据生成 HTML
-  const pptSlidesData = pagesData.pptSlidesData;
-  const pptResult = await Promise.resolve(
-    pptService.generatePptHtml(pptSlidesData, pptOptions),
-  );
-  const finalHtmlContent = pptResult.htmlContent;
+  // 1. 使用 AI 生成的幻灯片数据生成 HTML (简化后的 PptService 流程)
+  // 如果有 slides 和 context，直接调用 generatePptWithAi
+  let finalHtmlContent = '';
+  let pageCount = 0;
+  let pptResult: PptGenerationResult | undefined;
+
+  if (pagesData.slides && pagesData.context) {
+    pptResult = await pptService.generatePptWithAi(
+      pagesData.slides,
+      pagesData.context,
+      pptOptions,
+    );
+    finalHtmlContent = pptResult.htmlPages.join('\n');
+    pageCount = pptResult.stats.total;
+  } else {
+    // 降级处理或适配旧数据结构
+    console.warn(
+      '使用旧版 pptSlidesData 结构，建议迁移至 slides 和 context 结构',
+    );
+    // 注意：简化后的 PptService 已经移除了 generatePptHtml 方法
+    // 这里如果必须支持旧数据，可能需要调用 aiHtmlGenerator 直接生成
+    throw new Error(
+      'PptService 已简化，请使用 slides 和 context 调用 generatePptWithAi',
+    );
+  }
 
   // 返回更新后的数据
   const result: Record<string, unknown> = {
@@ -302,16 +333,17 @@ async function customExecutePagesStep(
     metadata: {
       title: pagesData.script?.pages?.[0]?.keyPoints?.[0] || '演示文档',
       description: '基于 AI 生成的 PPT 增强演示文档',
-      pageCount: pptSlidesData.length,
-      aspectRatio: pptOptions.aspectRatio || '16:9',
-      designStyle: pptOptions.theme || 'modern',
-      pptTheme: pptOptions.theme,
-      totalSlides: pptSlidesData.length,
+      pageCount: pageCount,
+      aspectRatio: (pptOptions as any).aspectRatio || '16:9',
+      designStyle: (pptOptions as any).theme || 'modern',
+      pptTheme: (pptOptions as any).theme,
+      totalSlides: pageCount,
     },
   };
 
   // 添加 PPT 相关数据
-  result.pptSlidesData = pptSlidesData;
+  result.pptSlidesData = pagesData.pptSlidesData || pagesData.slides;
+  result.pptResult = pptResult;
 
   return result;
 }

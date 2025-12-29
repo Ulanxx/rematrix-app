@@ -7,16 +7,14 @@
 import { PptService } from './ppt.service';
 import { AiHtmlGeneratorService } from './ai-html-generator.service';
 import { HtmlValidatorService } from './html-validator.service';
-import { PptCacheService } from './ppt-cache.service';
 
 import * as fs from 'fs';
 async function testAiGeneration() {
   console.log('🚀 开始测试 AI PPT 生成...\n');
 
   const validator = new HtmlValidatorService();
-  const cache = new PptCacheService();
   const aiGenerator = new AiHtmlGeneratorService(validator);
-  const pptService = new PptService(aiGenerator, cache);
+  const pptService = new PptService(aiGenerator);
 
   const testSlides = [
     {
@@ -170,12 +168,16 @@ async function testAiGeneration() {
   };
 
   try {
+    console.log('🔧 测试模式对比：\n');
+
+    // 生成完整PPT（使用快速模式）
+    console.log('🚀 生成完整PPT（快速模式）...');
     const result = await pptService.generatePptWithAi(testSlides, context, {
       themeConfig,
-      concurrency: 2,
-      maxRetries: 2,
+      concurrency: 10,
+      maxRetries: 5,
       enableCache: true,
-      uploadToCloud: false,
+      skipValidation: false, // 使用快速模式
     });
 
     console.log('\n✅ 生成完成!');
@@ -197,4 +199,4 @@ async function testAiGeneration() {
   }
 }
 
-testAiGeneration();
+void testAiGeneration();
