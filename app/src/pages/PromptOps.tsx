@@ -7,12 +7,12 @@ import type {
   Stage,
 } from '@/api/types'
 import AppShell from '@/components/AppShell'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
-import { Separator } from '@/components/ui/Separator'
-import { Textarea } from '@/components/ui/Textarea'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
 
 type ListConfigsResponse = {
   configs: PromptStageConfig[]
@@ -527,7 +527,7 @@ export default function PromptOpsPage() {
                   setDirty(true)
                   setModel(e.target.value)
                 }}
-                placeholder="z-ai/glm-4.7"
+                placeholder="google/gemini-3-flash-preview"
                 disabled={loading}
               />
             </div>

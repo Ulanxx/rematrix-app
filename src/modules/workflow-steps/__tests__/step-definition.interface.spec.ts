@@ -17,7 +17,7 @@ describe('Step Definition Interface', () => {
       name: 'Test Step',
       description: 'Test step description',
       aiConfig: {
-        model: 'z-ai/glm-4.7',
+        model: 'google/gemini-3-flash-preview',
 
         prompt: 'Test prompt with <markdown>',
         schema: z.object({ test: z.string() }),

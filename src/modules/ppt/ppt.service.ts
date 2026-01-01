@@ -5,7 +5,7 @@ import {
   GenerationContext,
   AiGenerationOptions,
 } from './ai-html-generator.service';
-import { PptGenerationResult } from './ppt.types';
+import { PptGenerationResult, PptMasterSlideConfig } from './ppt.types';
 
 // 重新导出核心类型以供其他模块使用
 export type {
@@ -13,6 +13,7 @@ export type {
   GenerationContext,
   AiGenerationOptions,
   PptGenerationResult,
+  PptMasterSlideConfig,
 } from './ppt.types';
 
 /**
@@ -57,10 +58,6 @@ export class PptService {
       },
     );
 
-    const htmlPages = results
-      .filter((r) => r.status === 'success')
-      .map((r) => r.html);
-
     const stats = {
       total: results.length,
       success: results.filter((r) => r.status === 'success').length,
@@ -72,7 +69,7 @@ export class PptService {
       `AI 生成完成: 成功 ${stats.success}/${stats.total}, 失败 ${stats.failed}, 无效 ${stats.invalid}`,
     );
 
-    const mergedHtml = this.wrapAllSlides(htmlPages);
+    const mergedHtml = this.wrapAllSlides(results, context, options);
 
     return {
       htmlPages: [mergedHtml],
@@ -82,9 +79,55 @@ export class PptService {
   }
 
   /**
+   * 直接生成完整的 PPT HTML（优化路径）
+   */
+  async generateDirectPpt(
+    slides: StoryboardSlide[],
+    context: GenerationContext,
+    options: AiGenerationOptions = {},
+  ): Promise<PptGenerationResult> {
+    this.logger.log(`使用优化路径直接生成 ${slides.length} 页 PPT`);
+
+    const htmlContent = await this.aiHtmlGenerator.generateDirectHtml(
+      slides,
+      context,
+      options,
+    );
+
+    return {
+      htmlPages: [htmlContent],
+      results: slides.map((s) => ({
+        slideId: s.id,
+        status: 'success' as const,
+        generatedAt: new Date().toISOString(),
+        html: '', // 完整内容已在 htmlPages 中
+      })),
+      stats: {
+        total: slides.length,
+        success: slides.length,
+        failed: 0,
+        invalid: 0,
+      },
+    };
+  }
+
+  /**
    * 将多页幻灯片 HTML 片段包装成完整的文档结构
    */
-  private wrapAllSlides(slides: string[]): string {
+  private wrapAllSlides(
+    results: any[],
+    context: GenerationContext,
+    options: AiGenerationOptions,
+  ): string {
+    const enableMaster = options.enableMasterSlide !== false;
+    const masterConfig: PptMasterSlideConfig = {
+      showHeader: true,
+      showPageNumber: true,
+      headerLeftText: context.courseTitle || '演示文档',
+      headerRightText: 'LIVE',
+      ...((options as any).masterConfig || {}),
+    };
+
     return `
 <!DOCTYPE html>
 <html>
@@ -115,6 +158,74 @@ export class PptService {
       page-break-after: always;
     }
 
+    /* 页面类型基础样式 */
+    .slide-type-title .master-header, .slide-type-closing .master-header { display: none !important; }
+    .slide-type-title .master-footer, .slide-type-closing .master-footer { display: none !important; }
+
+    /* 母版装饰层 */
+    .master-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1280px;
+      height: 720px;
+      pointer-events: none;
+      z-index: 50; /* 确保在 AI 内容之上 */
+    }
+
+    .master-header {
+      position: absolute;
+      top: 24px;
+      left: 40px;
+      right: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.6);
+      mix-blend-mode: difference;
+    }
+
+    .master-footer {
+      position: absolute;
+      bottom: 24px;
+      left: 40px;
+      right: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.5);
+      mix-blend-mode: difference;
+    }
+
+    .page-number-box {
+      font-weight: 500;
+      letter-spacing: 0.05em;
+    }
+
+    .live-badge {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    /* 首页和结尾页的特殊装饰 */
+    .slide-type-title .master-overlay::before, .slide-type-closing .master-overlay::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 8px;
+      background: linear-gradient(90deg, #4285F4, #34A853, #FBBC05, #EA4335);
+    }
+
     @media print {
       body {
         background: none;
@@ -124,13 +235,70 @@ export class PptService {
         box-shadow: none;
       }
     }
+
+    ${masterConfig.customCss || ''}
   </style>
 </head>
 <body>
-  ${slides
-    .map((slide) =>
-      slide.trim() ? `<div class="ppt-page-wrapper">${slide}</div>` : '',
-    )
+  ${results
+    .map((result, index) => {
+      const slideType = (result.type || 'content') as string;
+      const content = result.html || '';
+
+      if (!content.trim()) return '';
+
+      const pageNum = (index + 1).toString().padStart(2, '0');
+      const totalNum = results.length.toString().padStart(2, '0');
+
+      let masterHtml = '';
+      if (enableMaster) {
+        // 合并通用配置和类型特定配置
+        const typeConfig = masterConfig.typeConfigs?.[slideType as any] || {};
+        const showHeader =
+          typeConfig.showHeader !== undefined
+            ? typeConfig.showHeader
+            : masterConfig.showHeader;
+        const showPageNumber =
+          typeConfig.showPageNumber !== undefined
+            ? typeConfig.showPageNumber
+            : masterConfig.showPageNumber;
+
+        const headerHtml = showHeader
+          ? `
+              <div class="master-header">
+                <div class="flex items-center gap-3">
+                  <div class="w-1 h-4 bg-blue-500"></div>
+                  <span class="font-semibold uppercase tracking-wider">${masterConfig.headerLeftText}</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <span class="live-badge">${masterConfig.headerRightText}</span>
+                </div>
+              </div>
+            `
+          : '';
+
+        const footerHtml = showPageNumber
+          ? `
+              <div class="master-footer">
+                <div class="text-[10px] uppercase tracking-widest opacity-50">System Status: Ready for Testing</div>
+                <div class="page-number-box">PAGE ${pageNum} / ${totalNum}</div>
+              </div>
+            `
+          : '';
+
+        masterHtml = `
+          <div class="master-overlay">
+            ${headerHtml}
+            ${footerHtml}
+          </div>
+        `;
+      }
+
+      return `<div class="ppt-page-wrapper slide-type-${slideType}">
+${content}
+${masterHtml}
+</div>`;
+    })
     .join('\n')}
 </body>
 </html>

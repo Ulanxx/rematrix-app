@@ -36,7 +36,7 @@ export const planStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-3-flash-preview',
 
     prompt: `# role
 你是一名资深视频策划与教学设计专家。

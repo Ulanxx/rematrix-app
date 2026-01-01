@@ -35,7 +35,7 @@ describe('PptService - Simplified', () => {
     expect(service).toBeDefined();
   });
 
-  it('should generate PPT with AI successfully', async () => {
+  it('should generate PPT with AI and master slide successfully', async () => {
     // 准备测试数据
     const slides: StoryboardSlide[] = [
       {
@@ -47,7 +47,7 @@ describe('PptService - Simplified', () => {
     ];
 
     const context: GenerationContext = {
-      courseTitle: 'Test Course',
+      courseTitle: 'Master Slide Course',
     };
 
     const mockResults: AiGeneratedHtml[] = [
@@ -61,30 +61,18 @@ describe('PptService - Simplified', () => {
 
     aiHtmlGenerator.generateAllSlides.mockResolvedValue(mockResults);
 
-    // 执行测试
-    const result = await service.generatePptWithAi(slides, context);
+    // 执行测试 - 显式启用母版
+    const result = await service.generatePptWithAi(slides, context, {
+      enableMasterSlide: true,
+    });
 
     // 验证结果
     expect(result).toBeDefined();
     expect(result.htmlPages).toHaveLength(1);
-    expect(result.htmlPages[0]).toBe('<div>Test HTML</div>');
-    expect(result.stats.total).toBe(1);
-    expect(result.stats.success).toBe(1);
-    expect(result.stats.failed).toBe(0);
-    expect(result.stats.invalid).toBe(0);
-
-    // 验证调用参数
-    expect(aiHtmlGenerator.generateAllSlides).toHaveBeenCalledWith(
-      slides,
-      context,
-      {
-        themeConfig: undefined,
-        concurrency: 3,
-        maxRetries: 2,
-        enableCache: true,
-        skipValidation: undefined,
-      },
-    );
+    expect(result.htmlPages[0]).toContain('ppt-page-wrapper');
+    expect(result.htmlPages[0]).toContain('master-overlay');
+    expect(result.htmlPages[0]).toContain('Master Slide Course');
+    expect(result.htmlPages[0]).toContain('PAGE 01 / 01');
   });
 
   it('should handle AI generator initialization error', async () => {

@@ -77,7 +77,7 @@ export const storyboardStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-3-flash-preview',
 
     prompt: `# role
 你是一名分镜设计师，擅长将大纲转成逐页分镜。

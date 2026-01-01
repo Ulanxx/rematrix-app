@@ -197,7 +197,7 @@ describe('Theme Design Integration Tests', () => {
     it('should have correct AI configuration for THEME_DESIGN', () => {
       const themeDesignStep = stepRegistry.get(JobStage.THEME_DESIGN);
 
-      expect(themeDesignStep?.aiConfig.model).toBe('z-ai/glm-4.7');
+      expect(themeDesignStep?.aiConfig.model).toBe('google/gemini-3-flash-preview');
       expect(themeDesignStep?.aiConfig.prompt).toContain(
         'Theme Design Selection',
       );

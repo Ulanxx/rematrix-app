@@ -120,7 +120,7 @@ export const outlineStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-3-flash-preview',
 
     prompt: `# role
 你是一名资深课程结构化专家，擅长把内容拆成清晰的大纲。

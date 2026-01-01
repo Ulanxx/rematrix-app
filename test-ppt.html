@@ -1,417 +1,255 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
-    
-    body {
-      margin: 0;
-      padding: 0;
-      overflow-x: hidden;
-      background-color: #f3f4f6;
-    }
-    
-    /* PPT 页面容器 */
-    .ppt-page-wrapper {
-      width: 1280px;
-      height: 720px;
-      margin: 20px auto;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-      background: white;
-      position: relative;
-      overflow: hidden;
-      page-break-after: always;
-    }
-
-    @media print {
-      body {
-        background: none;
-      }
-      .ppt-page-wrapper {
-        margin: 0;
-        box-shadow: none;
-      }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent 生产之殇</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
-<body>
-  <div class="ppt-page-wrapper"><div class="w-[1280px] h-[720px] relative overflow-hidden bg-[#0d1117] text-white flex flex-col font-sans selection:bg-[#4285F4] selection:text-white">
-  
-  <!-- 引入 Tailwind 和 FontAwesome (为了确保样式生效，放在容器内) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- 内联样式与自定义动画 -->
-  <style>
-    /* Matrix Code Rain Effect */
-    .matrix-bg {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: 
-        radial-gradient(circle at 50% 50%, transparent 0%, #0d1117 90%),
-        repeating-linear-gradient(0deg, transparent 0, transparent 1px, rgba(52, 168, 83, 0.03) 1px, rgba(52, 168, 83, 0.03) 2px);
-      z-index: 0;
-      pointer-events: none;
-    }
-    
-    /* Scanline effect */
-    .scanline {
-      width: 100%;
-      height: 100px;
-      z-index: 1;
-      background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(66, 133, 244, 0.05) 50%, rgba(0,0,0,0) 100%);
-      opacity: 0.1;
-      position: absolute;
-      bottom: 100%;
-      animation: scanline 10s linear infinite;
-      pointer-events: none;
-    }
+<body class="bg-gray-100">
 
-    @keyframes scanline {
-      0% { bottom: 100%; }
-      100% { bottom: -100px; }
-    }
-
-    /* Scale Balance Animation */
-    @keyframes balance-sway {
-      0%, 100% { transform: rotate(-2deg); }
-      50% { transform: rotate(2deg); }
-    }
-    
-    .animate-balance {
-      animation: balance-sway 6s ease-in-out infinite;
-      transform-origin: center bottom;
-    }
-
-    /* Glowing Text */
-    .glow-text-blue { text-shadow: 0 0 10px rgba(66, 133, 244, 0.6); }
-    .glow-text-yellow { text-shadow: 0 0 10px rgba(251, 188, 5, 0.6); }
-    
-    /* Glass Card */
-    .glass-card {
-      background: rgba(255, 255, 255, 0.03);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
-      transition: all 0.3s ease;
-    }
-    .glass-card:hover {
-      background: rgba(255, 255, 255, 0.07);
-      border-color: rgba(66, 133, 244, 0.4);
-      transform: translateX(10px);
-    }
-  </style>
-
-  <!-- 背景层 -->
-  <div class="matrix-bg"></div>
-  <div class="scanline"></div>
-
-  <!-- 装饰光晕 -->
-  <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#4285F4] rounded-full opacity-[0.08] blur-[100px]"></div>
-  <div class="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-[#34A853] rounded-full opacity-[0.08] blur-[100px]"></div>
-
-  <!-- 顶部导航栏 -->
-  <header class="relative z-20 flex justify-between items-center px-12 py-6 border-b border-white/5">
-    <div class="flex items-center gap-4">
-      <div class="w-1 h-8 bg-[#4285F4] rounded-full"></div>
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight leading-none">拒绝“抽卡式”上线：AI 自动化测试实战</h1>
-        <p class="text-sm text-[#9ca3af] mt-1 font-medium tracking-wide uppercase">课程：AI 系统的生死线：LLM Evals 自动化测试实战</p>
-      </div>
-    </div>
-    <div class="text-right">
-      <span class="px-3 py-1 text-xs font-mono text-[#FBBC05] border border-[#FBBC05]/30 rounded bg-[#FBBC05]/5">LIVE</span>
-      <div class="text-xs text-gray-500 mt-1 font-mono">PAGE 01 / 02</div>
-    </div>
-  </header>
-
-  <!-- 主要内容区域 -->
-  <main class="relative z-20 flex flex-1 px-12 py-8 gap-12">
-    
-    <!-- 左侧：视觉隐喻 (天平与科技感) -->
-    <div class="w-2/5 flex flex-col justify-center items-center relative">
-      
-      <!-- 抽象天平结构 -->
-      <div class="relative w-full h-[400px] flex items-end justify-center">
-        
-        <!-- 天平底座 -->
-        <div class="absolute bottom-0 w-32 h-4 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full shadow-lg"></div>
-        <div class="absolute bottom-4 w-2 h-24 bg-gray-600 rounded-t-full"></div>
-        <div class="absolute bottom-[112px] w-16 h-16 rounded-full border-4 border-[#FBBC05] flex items-center justify-center bg-[#0d1117] z-20 shadow-[0_0_20px_rgba(251,188,5,0.3)]">
-          <i class="fas fa-exclamation-triangle text-[#FBBC05] text-xl"></i>
-        </div>
-
-        <!-- 动态横梁 -->
-        <div class="absolute bottom-[115px] w-[320px] h-2 bg-gradient-to-r from-[#4285F4] via-white to-[#34A853] animate-balance shadow-[0_0_15px_rgba(255,255,255,0.3)] origin-bottom"></div>
-
-        <!-- 左侧托盘 (AI Chip) -->
-        <div class="absolute bottom-[115px] left-[calc(50%-160px)] w-24 h-24 flex flex-col items-center justify-center animate-[float_4s_ease-in-out_infinite]" style="animation-delay: 0s;">
-          <!-- 连接线 -->
-          <div class="w-[1px] h-24 bg-[#4285F4] absolute top-[-96px] left-1/2 origin-top"></div>
-          <!-- 图标容器 -->
-          <div class="w-32 h-32 rounded-2xl bg-[#1a2332] border border-[#4285F4]/50 flex items-center justify-center shadow-[0_0_30px_rgba(66,133,244,0.2)] relative overflow-hidden group">
-            <div class="absolute inset-0 bg-[#4285F4]/10 group-hover:bg-[#4285F4]/20 transition-all"></div>
-            <i class="fas fa-microchip text-5xl text-[#4285F4] glow-text-blue"></i>
-            <!-- 标签 -->
-            <div class="absolute -bottom-2 bg-[#4285F4] text-black text-[10px] font-bold px-2 py-0.5 rounded">LLM AI</div>
-          </div>
-        </div>
-
-        <!-- 右侧托盘 (测试卷子) -->
-        <div class="absolute bottom-[115px] right-[calc(50%-160px)] w-24 h-24 flex flex-col items-center justify-center animate-[float_4s_ease-in-out_infinite]" style="animation-delay: 2s;">
-           <!-- 连接线 -->
-           <div class="w-[1px] h-24 bg-[#34A853] absolute top-[-96px] left-1/2 origin-top"></div>
-          <!-- 图标容器 -->
-          <div class="w-32 h-32 rounded-2xl bg-[#0f1a15] border border-[#34A853]/50 flex items-center justify-center shadow-[0_0_30px_rgba(52,168,83,0.2)] relative overflow-hidden group">
-            <div class="absolute inset-0 bg-[#34A853]/10 group-hover:bg-[#34A853]/20 transition-all"></div>
-            <i class="fas fa-file-code text-5xl text-[#34A853]"></i>
-             <div class="absolute -bottom-2 bg-[#34A853] text-black text-[10px] font-bold px-2 py-0.5 rounded">EVALS</div>
-          </div>
-        </div>
-
-      </div>
-      
-      <div class="text-center mt-4">
-        <p class="text-[#FBBC05] font-bold text-lg tracking-widest glow-text-yellow"><i class="fas fa-balance-scale-right mr-2"></i>确定性 vs 不确定性</p>
-      </div>
-    </div>
-
-    <!-- 右侧：内容要点 -->
-    <div class="w-3/5 flex flex-col justify-center gap-5">
-      
-      <!-- 要点 1 -->
-      <div class="glass-card p-5 rounded-xl flex items-center gap-5 group cursor-default">
-        <div class="w-12 h-12 rounded-lg bg-[#4285F4]/10 flex items-center justify-center border border-[#4285F4]/20 group-hover:bg-[#4285F4]/20 transition-colors">
-          <i class="fas fa-exchange-alt text-[#4285F4] text-xl"></i>
-        </div>
-        <div>
-          <h3 class="font-bold text-lg text-gray-200 group-hover:text-white transition-colors">从“运维监控”转向“工程化测试”</h3>
-          <p class="text-sm text-gray-500 mt-1">Shift from Ops Monitoring to Engineering Testing</p>
-        </div>
-      </div>
-
-      <!-- 要点 2 (痛点 - 强调色) -->
-      <div class="glass-card p-5 rounded-xl flex items-center gap-5 group cursor-default border-l-4 border-l-[#FBBC05]">
-        <div class="w-12 h-12 rounded-lg bg-[#FBBC05]/10 flex items-center justify-center border border-[#FBBC05]/20 group-hover:bg-[#FBBC05]/20 transition-colors">
-          <i class="fas fa-dice-d20 text-[#FBBC05] text-xl group-hover:rotate-180 transition-transform duration-700"></i>
-        </div>
-        <div>
-          <h3 class="font-bold text-lg text-gray-200">核心痛点：LLM 的不确定性与非确定性输出</h3>
-          <p class="text-sm text-[#FBBC05] mt-1 font-medium"><i class="fas fa-exclamation-circle mr-1"></i> 拒绝“抽卡式”上线</p>
-        </div>
-      </div>
-
-      <!-- 要点 3 -->
-      <div class="glass-card p-5 rounded-xl flex items-center gap-5 group cursor-default">
-        <div class="w-12 h-12 rounded-lg bg-[#34A853]/10 flex items-center justify-center border border-[#34A853]/20 group-hover:bg-[#34A853]/20 transition-colors">
-          <i class="fas fa-shield-alt text-[#34A853] text-xl"></i>
-        </div>
-        <div>
-          <h3 class="font-bold text-lg text-gray-200 group-hover:text-white transition-colors">目标：构建 AI 系统的“生死线”保证</h3>
-          <p class="text-sm text-gray-500 mt-1">Guaranteeing the Lifeline of AI Systems</p>
-        </div>
-      </div>
-
-      <!-- 要点 4 -->
-      <div class="glass-card p-5 rounded-xl flex items-center gap-5 group cursor-default relative overflow-hidden">
-        <div class="absolute right-0 top-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity">
-          <i class="fas fa-hat-wizard text-8xl"></i>
-        </div>
-        <div class="w-12 h-12 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors">
-          <i class="fas fa-magic text-purple-400 text-xl"></i>
-        </div>
-        <div>
-          <h3 class="font-bold text-lg text-gray-200">Evals：用魔法打败魔法 <span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded ml-2 font-normal">LLM-as-a-Judge</span></h3>
-          <p class="text-sm text-gray-500 mt-1">Automated Evaluation Frameworks</p>
-        </div>
-      </div>
-
-    </div>
-  </main>
-  
-  <!-- 底部装饰 -->
-  <footer class="relative z-10 px-12 py-4 flex justify-between items-center border-t border-white/5">
-    <div class="text-[10px] text-gray-600 uppercase tracking-widest font-mono">
-      <span class="w-2 h-2 inline-block rounded-full bg-[#34A853] mr-2 animate-pulse"></span>System Status: Ready for Testing
-    </div>
-    <div class="h-1 w-32 bg-gray-800 rounded-full overflow-hidden">
-      <div class="h-full w-2/3 bg-gradient-to-r from-[#4285F4] to-[#34A853]"></div>
-    </div>
-  </footer>
-
-</div></div>
-<div class="ppt-page-wrapper"><div class="w-[1280px] h-[720px] relative overflow-hidden bg-gray-50 font-sans select-none text-slate-800">
-    <!-- Styles for Animations -->
-    <style>
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes spin-reverse { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
-        @keyframes scroll-reel { 0% { transform: translateY(0); } 100% { transform: translateY(-50%); } }
-        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
-        @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 15px rgba(66, 133, 244, 0.2); } 50% { box-shadow: 0 0 25px rgba(66, 133, 244, 0.5); } }
-        .gear-spin { animation: spin 10s linear infinite; }
-        .gear-spin-rev { animation: spin-reverse 8s linear infinite; }
-        .reel-scroll { animation: scroll-reel 1s steps(3) infinite; }
-        .card-float { animation: float 4s ease-in-out infinite; }
-    </style>
-
-    <!-- Background Decorations (Google Style Color Blobs) -->
-    <div class="absolute top-[-100px] left-[-100px] w-[400px] h-[400px] rounded-full mix-blend-multiply filter blur-3xl opacity-20 bg-[#4285F4]"></div>
-    <div class="absolute bottom-[-100px] right-[-100px] w-[500px] h-[500px] rounded-full mix-blend-multiply filter blur-3xl opacity-20 bg-[#FBBC05]"></div>
-
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
     <!-- Header -->
-    <div class="absolute top-0 left-0 w-full h-16 px-10 flex justify-between items-center z-50">
-        <div class="flex items-center space-x-2">
-            <div class="w-3 h-3 rounded-full bg-[#4285F4]"></div>
-            <div class="w-3 h-3 rounded-full bg-[#EA4335]"></div>
-            <div class="w-3 h-3 rounded-full bg-[#FBBC05]"></div>
-            <div class="w-3 h-3 rounded-full bg-[#34A853]"></div>
-            <span class="ml-2 text-gray-500 font-medium text-sm tracking-wide">AI 系统的生死线：LLM Evals 自动化测试实战</span>
-        </div>
-        <span class="text-gray-400 font-medium text-sm">第 2 页 / 共 2 页</span>
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
     </div>
-
-    <!-- Main Title -->
-    <h1 class="absolute top-20 left-0 w-full text-center text-4xl font-bold text-[#202124] z-10 mb-8">
-        现状：为什么我们在<span class="text-[#EA4335] relative inline-block">
-            “抽卡”
-            <svg class="absolute w-full h-2 -bottom-1 left-0 text-[#FBBC05] opacity-60" viewBox="0 0 100 10" preserveAspectRatio="none">
-                <path d="M0 5 Q 50 10 100 5" stroke="currentColor" stroke-width="3" fill="none" />
-            </svg>
-        </span>？
-    </h1>
-
-    <!-- Content Container -->
-    <div class="absolute top-40 left-0 w-full h-[calc(100%-160px)] flex justify-center items-start px-20 gap-8">
-
-        <!-- Left Side: Traditional Development (Precision) -->
-        <div class="w-1/2 h-full flex flex-col relative group">
-            <!-- Visual: Gears -->
-            <div class="h-[200px] flex justify-center items-center relative mb-6">
-                <!-- Big Gear -->
-                <i class="fas fa-cog text-8xl text-[#34A853] absolute left-1/4 top-1/2 transform -translate-x-1/2 -translate-y-1/2 gear-spin drop-shadow-lg"></i>
-                <!-- Medium Gear -->
-                <i class="fas fa-cog text-6xl text-[#4285F4] absolute left-[55%] top-1/3 transform -translate-y-1/2 gear-spin-rev drop-shadow-lg"></i>
-                <!-- Small Gear -->
-                <i class="fas fa-cog text-4xl text-[#4285F4] absolute left-[65%] top-[65%] transform -translate-y-1/2 gear-spin drop-shadow-lg opacity-80"></i>
-            </div>
-
-            <!-- Card Content -->
-            <div class="bg-white p-6 rounded-2xl shadow-xl border-l-4 border-[#34A853] hover:shadow-2xl transition-shadow duration-300">
-                <div class="flex items-center mb-4">
-                    <div class="w-10 h-10 rounded-full bg-[#E6F4EA] flex items-center justify-center text-[#34A853] mr-3">
-                        <i class="fas fa-check text-xl"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800">传统开发模式</h3>
-                </div>
-                <div class="flex items-start space-x-3">
-                    <i class="fas fa-arrow-right text-[#34A853] mt-1"></i>
-                    <p class="text-lg text-gray-700 font-medium">
-                        单元测试 <span class="px-2 py-0.5 bg-gray-100 rounded text-sm font-mono text-[#4285F4]">Unit Test</span> 保证逻辑确定性与精确性。
-                    </p>
-                </div>
-            </div>
-            
-            <!-- Decorative Connecting Line -->
-            <div class="absolute right-[-16px] top-1/2 transform -translate-y-1/2 z-20">
-                <div class="w-8 h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center shadow-md">
-                    <i class="fas fa-exchange-alt text-gray-400 text-sm transform rotate-90"></i>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Side: AI Development (Gacha/Chaos) -->
-        <div class="w-1/2 h-full flex flex-col relative">
-            <!-- Visual: Slot Machine / Gacha -->
-            <div class="h-[200px] flex justify-center items-center relative mb-6">
-                <!-- Slot Machine Body -->
-                <div class="w-64 h-40 bg-[#DB4437] rounded-xl shadow-2xl relative border-b-8 border-red-800 flex flex-col items-center justify-center p-2">
-                    <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 w-12 h-12 bg-gray-300 rounded-full border-4 border-gray-400 z-10 flex items-center justify-center">
-                        <div class="w-8 h-8 bg-gray-400 rounded-full border-2 border-gray-500"></div>
-                    </div>
-                    
-                    <!-- Reels -->
-                    <div class="flex space-x-2 bg-gray-900 p-2 rounded border-2 border-yellow-500 w-full h-24 overflow-hidden relative">
-                        <!-- Reel 1 -->
-                        <div class="flex-1 bg-white flex flex-col items-center justify-center text-2xl reel-scroll" style="color: #DB4437;">
-                            <div class="h-8 flex items-center">🐛</div>
-                            <div class="h-8 flex items-center">🤖</div>
-                            <div class="h-8 flex items-center">✨</div>
-                            <div class="h-8 flex items-center">🐛</div> <!-- Duplicate for seamless loop -->
-                            <div class="h-8 flex items-center">🤖</div>
-                            <div class="h-8 flex items-center">✨</div>
-                        </div>
-                        <!-- Reel 2 -->
-                        <div class="flex-1 bg-white flex flex-col items-center justify-center text-2xl reel-scroll" style="animation-delay: 0.2s; color: #4285F4;">
-                            <div class="h-8 flex items-center">✨</div>
-                            <div class="h-8 flex items-center">🐛</div>
-                            <div class="h-8 flex items-center">🤖</div>
-                            <div class="h-8 flex items-center">✨</div>
-                            <div class="h-8 flex items-center">🐛</div>
-                            <div class="h-8 flex items-center">🤖</div>
-                        </div>
-                        <!-- Reel 3 -->
-                        <div class="flex-1 bg-white flex flex-col items-center justify-center text-2xl reel-scroll" style="animation-delay: 0.4s; color: #FBBC05;">
-                            <div class="h-8 flex items-center">🤖</div>
-                            <div class="h-8 flex items-center">✨</div>
-                            <div class="h-8 flex items-center">🐛</div>
-                            <div class="h-8 flex items-center">🤖</div>
-                            <div class="h-8 flex items-center">✨</div>
-                            <div class="h-8 flex items-center">🐛</div>
-                        </div>
-                    </div>
-                </div>
-                <!-- Coin/Element -->
-                <div class="absolute -right-4 bottom-0 w-12 h-12 bg-[#FBBC05] rounded-full shadow-lg animate-bounce flex items-center justify-center text-white font-bold border-2 border-yellow-300">
-                    ?
-                </div>
-            </div>
-
-            <!-- Card Content -->
-            <div class="bg-white p-6 rounded-2xl shadow-xl border-l-4 border-[#DB4437] relative overflow-hidden">
-                <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-50 to-transparent -mr-8 -mt-8 rounded-bl-full"></div>
-                
-                <div class="flex items-center mb-4">
-                    <div class="w-10 h-10 rounded-full bg-[#FCE8E6] flex items-center justify-center text-[#DB4437] mr-3">
-                        <i class="fas fa-dice text-xl"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800">AI 开发现状</h3>
-                </div>
-
-                <div class="space-y-4">
-                    <!-- Point 2 -->
-                    <div class="flex items-start bg-gray-50 p-3 rounded-lg border border-gray-100">
-                        <i class="fas fa-terminal text-[#FBBC05] mt-1 mr-3"></i>
-                        <div>
-                            <p class="text-sm text-gray-500 mb-1">典型流程</p>
-                            <p class="text-base text-gray-800 font-semibold">改 Prompt <i class="fas fa-arrow-right text-xs mx-1"></i> 跑 Case <i class="fas fa-arrow-right text-xs mx-1"></i> LGTM <i class="fas fa-arrow-right text-xs mx-1"></i> <span class="text-[#DB4437]">上线爆炸 💥</span></p>
-                        </div>
-                    </div>
-
-                    <!-- Point 3 -->
-                    <div class="flex items-start">
-                        <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center mr-3 mt-0.5">
-                            <span class="text-xs font-bold text-gray-600">!</span>
-                        </div>
-                        <p class="text-base text-gray-700 leading-relaxed">
-                            <span class="font-bold text-gray-900">根本原因：</span>概率模型具有随机性，无法使用简单的 <code class="bg-gray-100 px-1 rounded text-sm font-mono">assert</code> 逻辑断言。
-                        </p>
-                    </div>
-
-                    <!-- Point 4 -->
-                    <div class="flex items-start">
-                        <i class="fas fa-exclamation-triangle text-[#FBBC05] mt-1 mr-3"></i>
-                        <p class="text-base text-gray-700">
-                            <span class="font-bold text-gray-900">潜在风险：</span>修了一个 Bug，极大概率引发十个新 Bug。
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>1 / 10</div>
     </div>
-</div></div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center" style="background: linear-gradient(to right, #4285F4, #34A853);">
+        <h1 class="text-6xl font-bold text-white mb-4">Agent 生产之殇</h1>
+        <p class="text-2xl text-white">如何将 LLM 的不确定性关进工程沙盒</p>
+        <div class="absolute bottom-20 right-20">
+          <i class="fas fa-atom fa-5x text-blue-200 animate-spin"></i>
+        </div>
+
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>2 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">现状：为什么我们在“抽卡”？</h2>
+        <div class="flex items-center justify-around w-full px-20">
+            <div>
+                <i class="fas fa-cog fa-5x text-blue-500 mb-4"></i>
+                <p class="text-center text-gray-600">齿轮</p>
+            </div>
+            <div>
+              <i class="fas fa-random fa-3x text-red-500 animate-pulse"></i>
+            </div>
+            <div>
+                <i class="fas fa-cloud fa-5x text-green-500 mb-4"></i>
+                <p class="text-center text-gray-600">云团</p>
+            </div>
+        </div>
+        <p class="text-xl text-gray-700 mt-8">工程熵增与概率抽样, 确定性代码封装黑盒</p>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>3 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">诊断：拒绝 LLM 函数化思维</h2>
+        <div class="flex items-center justify-around w-full px-20">
+            <div>
+                <p class="text-center text-gray-600">f(x) = y</p>
+                <i class="fas fa-equals fa-2x text-blue-500 mb-4"></i>
+            </div>
+            <div>
+                <i class="fas fa-arrow-right fa-3x text-red-500"></i>
+            </div>
+            <div>
+                <i class="fas fa-cloud fa-5x text-green-500 mb-4"></i>
+                <p class="text-center text-gray-600">多重阴影输出</p>
+
+            </div>
+        </div>
+        <p class="text-xl text-gray-700 mt-8">Prompt 微调的连锁反应；输出分布的不稳定性</p>
+         <i class="fas fa-exclamation-triangle fa-4x text-yellow-500 absolute top-20 right-20 animate-bounce"></i>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>4 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">警惕实验室幻觉</h2>
+        <div class="flex items-center justify-around w-full px-20">
+            <div class="text-center">
+                <i class="fas fa-flask fa-5x text-blue-500 mb-4"></i>
+                <p class="text-gray-600">短文本精准反应</p>
+            </div>
+            <div>
+               <i class="fas fa-exchange-alt fa-3x text-gray-400"></i>
+            </div>
+            <div class="text-center">
+                <i class="fas fa-robot fa-5x text-red-500 mb-4"></i>
+                <p class="text-gray-600">长上下文眼神涣散</p>
+            </div>
+        </div>
+        <p class="text-xl text-gray-700 mt-8">长 Context 稀释注意力，指令遗忘与自由发挥</p>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>5 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">多 Agent 是错误放大器</h2>
+        <div class="flex items-center justify-around w-full px-20">
+
+            <i class="fas fa-user fa-3x text-blue-500"></i>
+            <i class="fas fa-arrow-right fa-2x text-gray-400"></i>
+            <i class="fas fa-user fa-3x text-blue-500"></i>
+            <i class="fas fa-arrow-right fa-2x text-gray-400"></i>
+            <i class="fas fa-user fa-3x text-blue-500"></i>
+
+           <i class="fas fa-globe fa-5x text-red-500 ml-8"></i>
+        </div>
+        <p class="text-xl text-gray-700 mt-8">偏差级数级放大, 自信的错误闭环</p>
+        <span class="text-red-500">错误的自信!</span>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>6 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">控制流的致命直接连接</h2>
+
+          <i class="fas fa-database fa-5x text-red-500"></i>
+
+        <p class="text-xl text-gray-700 mt-8">LLM三无特征：无幂等、无边界、无Trace, 不可逆操作灾难</p>
+         <span class="text-red-500">禁止直接驱动敏感业务流!</span>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>7 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">法则一：收回决策终审权</h2>
+
+        <i class="fas fa-gavel fa-5x text-blue-500"></i>
+        <p class="text-xl text-gray-700 mt-8">角色降级：建议者而非决策官, 逻辑硬编码固化</p>
+         <span class="text-blue-500">关键逻辑锁进密码保险箱!</span>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>8 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">法则二：构建外部状态机</h2>
+        <i class="fas fa-server fa-5x text-green-500"></i>
+
+        <p class="text-xl text-gray-700 mt-8">Context Window 不可靠性；强制状态共识</p>
+         <span class="text-green-500">模型查看系统快照而非聊天记录!</span>
+
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>9 / 10</div>
+    </div>
+    <!-- Content -->
+    <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center bg-white">
+        <h2 class="text-4xl font-bold text-gray-800 mb-8">法则三：设计熔断与降级</h2>
+        <i class="fas fa-shield-alt fa-5x text-yellow-500"></i>
+        <p class="text-xl text-gray-700 mt-8">构建三道防线护栏, 防止幻觉级联爆炸</p>
+         <span class="text-yellow-500">输出端口的过滤网（Guardrails）!</span>
+    </div>
+</div>
+
+<div class="ppt-page-wrapper" style="width: 1280px; height: 720px; overflow: hidden; position: relative;">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 w-full h-12 bg-blue-500 text-white flex items-center justify-between px-6 z-10">
+        <div class="font-bold">Agent 生产之殇：如何将 LLM 的不确定性关进工程沙盒</div>
+        <div></div>
+    </div>
+    <!-- Footer -->
+    <div class="absolute bottom-0 left-0 w-full h-10 bg-blue-500 text-white flex items-center justify-end px-6 z-10">
+        <div>10 / 10</div>
+    </div>
+    <!-- Content -->
+      <div class="absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center" style="background: linear-gradient(to right, #4285F4, #34A853);">
+        <h1 class="text-4xl font-bold text-white mb-4">总结：工程规范压缩不确定性</h1>
+         <i class="fas fa-cogs fa-5x text-blue-200 animate-spin"></i>
+        <p class="text-2xl text-white">确定性 > 聪明度</p>
+         <span class="text-white">最好的 Agent 是守规矩的</span>
+
+    </div>
+</div>
+
 </body>
 </html>

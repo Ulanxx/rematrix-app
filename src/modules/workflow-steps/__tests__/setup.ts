@@ -100,7 +100,7 @@ global.createMockPrismaService = () => ({
 global.createMockPromptopsService = () => ({
   getActiveConfig: jest.fn().mockResolvedValue({
     id: 'test-config',
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-3-flash-preview',
 
     prompt: 'Test prompt',
     tools: null,
@@ -110,7 +110,7 @@ global.createMockPromptopsService = () => ({
   bootstrap: jest.fn().mockResolvedValue({
     activeConfig: {
       id: 'test-config',
-      model: 'z-ai/glm-4.7',
+      model: 'google/gemini-3-flash-preview',
 
       prompt: 'Test prompt',
       tools: null,

@@ -215,7 +215,7 @@ export class JobsController {
         baseURL: 'https://openrouter.ai/api/v1',
       });
 
-      const model = openai('z-ai/glm-4.7');
+      const model = openai('google/gemini-3-flash-preview');
 
       const result = streamText({
         model,

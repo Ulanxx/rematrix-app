@@ -5,8 +5,8 @@ import { apiClient } from '@/api/client'
 import type { Job, ListJobsResponse } from '@/api/types'
 import { GlassCard } from '@/components/aceternity/GlassCard'
 import AppShell from '@/components/AppShell'
-import { Badge } from '@/components/ui/Badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 function statusLabel(job: Job): string {
   if (job.status === 'COMPLETED') return '已完成'

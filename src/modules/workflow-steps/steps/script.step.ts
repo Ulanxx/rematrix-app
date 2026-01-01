@@ -113,7 +113,7 @@ export const scriptStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-3-flash-preview',
     temperature: 0.7,
     prompt: `# role
 你是一位专业的视频脚本撰稿人，擅长将分镜脚本扩展为完整、生动、适合口语播报的视频脚本。

@@ -130,7 +130,7 @@ export const pagesOutputSchema = z.object({
 });
 
 /**
- * PAGES 阶段的输入 Schema (重构版 - 基于 SCRIPT)
+ * PAGES 阶段的输入 Schema (重构版 - 基于 SCRIPT 和 STORYBOARD)
  */
 export const pagesInputSchema = z.object({
   script: z.object({
@@ -146,12 +146,39 @@ export const pagesInputSchema = z.object({
     ),
     metadata: z
       .object({
-        totalDuration: z.number().optional(),
+        title: z.string().optional(),
+        language: z.string().optional(),
         style: z.string().optional(),
+        totalDuration: z.number().optional(),
+        style_desc: z.string().optional(),
         tone: z.string().optional(),
       })
       .optional(),
   }),
+  // 幻灯片故事板数据 (对齐 StoryboardSlide 结构)
+  slides: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        content: z.array(z.string()),
+        type: z.string().optional(),
+        visualSuggestions: z.string().optional(),
+        narration: z.string().optional(),
+        slideNumber: z.number().optional(),
+      }),
+    )
+    .optional(),
+  // 生成上下文
+  context: z
+    .object({
+      courseTitle: z.string().optional(),
+      outline: z.array(z.string()).optional(),
+      totalSlides: z.number().optional(),
+      language: z.string().optional(),
+      style: z.string().optional(),
+    })
+    .optional(),
   // 主题设计配置
   themeDesign: z.object({
     designTheme: z.string(),
@@ -210,7 +237,7 @@ async function preparePagesInput(
 
   const inputData: Record<string, unknown> = {};
 
-  // 获取 SCRIPT 阶段的输出（完整脚本和口播稿）
+  // 1. 获取 SCRIPT 阶段的输出（完整脚本和口播稿）
   const scriptArtifact = await context.prisma.artifact.findFirst({
     where: {
       jobId,
@@ -221,11 +248,25 @@ async function preparePagesInput(
     select: { content: true },
   });
 
-  if (scriptArtifact?.content) {
-    inputData.script = scriptArtifact.content;
+  const scriptData = scriptArtifact?.content as any;
+  if (scriptData) {
+    inputData.script = scriptData;
   }
 
-  // 获取 THEME_DESIGN 阶段的输出
+  // 2. 获取 STORYBOARD 阶段的输出
+  const storyboardArtifact = await context.prisma.artifact.findFirst({
+    where: {
+      jobId,
+      stage: JobStage.STORYBOARD,
+      type: ArtifactType.JSON,
+    },
+    orderBy: { version: 'desc' },
+    select: { content: true },
+  });
+
+  const storyboardData = storyboardArtifact?.content as any;
+
+  // 3. 获取 THEME_DESIGN 阶段的输出
   const themeDesignArtifact = await context.prisma.artifact.findFirst({
     where: {
       jobId,
@@ -247,6 +288,56 @@ async function preparePagesInput(
       layoutStyle: 'glassmorphism',
       visualEffects: ['glass-effect', 'gradient-bg'],
       customizations: {},
+    };
+  }
+
+  // 4. 合并数据生成 slides 数组 (对齐 StoryboardSlide)
+  if (storyboardData?.pages && Array.isArray(storyboardData.pages)) {
+    const slides: StoryboardSlide[] = storyboardData.pages.map(
+      (p: any, i: number) => {
+        // 尝试从 scriptData.pages 中获取对应的 narration
+        const pageScript = scriptData?.pages?.find(
+          (sp: any) => sp.pageNumber === p.page,
+        );
+
+        return {
+          id: `slide-${p.page || i + 1}`,
+          title: Array.isArray(p.visual)
+            ? p.visual[0]
+            : p.visual || `Slide ${p.page || i + 1}`,
+          content: Array.isArray(p.narrationHints)
+            ? p.narrationHints
+            : [p.narrationHints || ''],
+          type:
+            i === 0
+              ? 'title'
+              : i === storyboardData.pages.length - 1
+                ? 'closing'
+                : 'content',
+          visualSuggestions: Array.isArray(p.visual)
+            ? p.visual.join('; ')
+            : p.visual,
+          narration: pageScript?.narration || p.narrationHints?.join(' '),
+          slideNumber: p.page || i + 1,
+        };
+      },
+    );
+    inputData.slides = slides;
+
+    // 构建 GenerationContext
+    inputData.context = {
+      courseTitle:
+        storyboardData.metadata?.title ||
+        scriptData?.metadata?.title ||
+        '未命名课程',
+      outline:
+        scriptData?.pages?.map((p: any) => p.keyPoints?.[0]).filter(Boolean) ||
+        [],
+      totalSlides: slides.length,
+      language: scriptData?.metadata?.language || '中文',
+      style: inputData.themeDesign
+        ? (inputData.themeDesign as any).designTheme
+        : undefined,
     };
   }
 
@@ -302,28 +393,89 @@ async function customExecutePagesStep(
   const pptService = new PptService(aiHtmlGenerator);
 
   // 1. 使用 AI 生成的幻灯片数据生成 HTML (简化后的 PptService 流程)
-  // 如果有 slides 和 context，直接调用 generatePptWithAi
+  // 如果有 slides 和 context，优先使用优化后的直接生成路径 generateDirectPpt
   let finalHtmlContent = '';
   let pageCount = 0;
   let pptResult: PptGenerationResult | undefined;
 
   if (pagesData.slides && pagesData.context) {
-    pptResult = await pptService.generatePptWithAi(
+    // 检查是否应该使用优化路径（直接生成整体）
+    // 默认在 PAGES 阶段使用优化路径以提升性能和一致性
+    pptResult = await pptService.generateDirectPpt(
       pagesData.slides,
       pagesData.context,
       pptOptions,
     );
     finalHtmlContent = pptResult.htmlPages.join('\n');
-    pageCount = pptResult.stats.total;
+    pageCount = pagesData.slides.length;
+  } else if (
+    pagesData.pptSlidesData &&
+    Array.isArray(pagesData.pptSlidesData) &&
+    pagesData.pptSlidesData.length > 0
+  ) {
+    // 如果是 AI 直接生成的 pptSlidesData，构造 context 进行生成
+    const context: GenerationContext = {
+      courseTitle: pagesData.script?.metadata?.title || '演示文档',
+    };
+
+    // 构造 slides 数组
+    const slides: StoryboardSlide[] = pagesData.pptSlidesData.map((s: any) => ({
+      id: s.slideId || `slide-${Math.random().toString(36).substr(2, 9)}`,
+      title: s.metadata?.title || '',
+      content: Array.isArray(s.elements)
+        ? s.elements
+            .map((el: any) =>
+              typeof el.content === 'string'
+                ? el.content
+                : JSON.stringify(el.content),
+            )
+            .join(' ')
+        : '',
+      visualDescription: '',
+      elements: s.elements,
+      design: s.design,
+      metadata: s.metadata,
+    }));
+
+    pptResult = await pptService.generateDirectPpt(slides, context, pptOptions);
+    finalHtmlContent = pptResult.htmlPages.join('\n');
+    pageCount = slides.length;
+  } else if (
+    (inputData.storyboard as any)?.pages &&
+    Array.isArray((inputData.storyboard as any).pages)
+  ) {
+    // 兼容 Storyboard 直接作为输入的情况 (包含 visual/narrationHints)
+    const storyboard = inputData.storyboard as any;
+    const context: GenerationContext = {
+      courseTitle:
+        storyboard.metadata?.title ||
+        pagesData.script?.metadata?.title ||
+        '演示文档',
+    };
+
+    const slides: StoryboardSlide[] = storyboard.pages.map((p: any) => ({
+      id: `slide-${p.page || Math.random().toString(36).substr(2, 9)}`,
+      title: Array.isArray(p.visual) ? p.visual[0] : p.visual || '',
+      content: Array.isArray(p.narrationHints)
+        ? p.narrationHints.join(' ')
+        : p.narrationHints || '',
+      visualDescription: Array.isArray(p.visual)
+        ? p.visual.join('\n')
+        : p.visual || '',
+      elements: [], // Storyboard 阶段通常还没有 elements，PptService 会处理 AI 生成
+    }));
+
+    pptResult = await pptService.generatePptWithAi(slides, context, pptOptions);
+    finalHtmlContent = pptResult.htmlPages.join('\n');
+    pageCount = slides.length;
   } else {
     // 降级处理或适配旧数据结构
     console.warn(
       '使用旧版 pptSlidesData 结构，建议迁移至 slides 和 context 结构',
     );
-    // 注意：简化后的 PptService 已经移除了 generatePptHtml 方法
-    // 这里如果必须支持旧数据，可能需要调用 aiHtmlGenerator 直接生成
+    // 针对没有 slides 和 context 也没有 pptSlidesData 的情况抛出更准确的错误
     throw new Error(
-      'PptService 已简化，请使用 slides 和 context 调用 generatePptWithAi',
+      'PptService 已简化，且未提供有效的幻灯片数据 (slides 或 pptSlidesData)',
     );
   }
 
@@ -360,7 +512,7 @@ export const pagesStep: StepDefinition = createStepDefinition({
 
   // AI 配置 (增强版 - 强调视觉丰富度和数据可视化)
   aiConfig: {
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-2.0-flash-001',
     temperature: 0.8,
     prompt: `# role
 你是世界顶级的视觉设计大师和创意总监，擅长创建视觉震撼、数据驱动且极具现代感的演示文稿。你精通信息可视化、版式设计和色彩心理学。

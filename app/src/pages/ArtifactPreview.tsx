@@ -4,10 +4,10 @@ import { Link, useParams } from 'react-router-dom'
 import { apiClient } from '@/api/client'
 import type { ApproveStageResponse, Artifact, GetArtifactsResponse, Stage } from '@/api/types'
 import AppShell from '@/components/AppShell'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Separator } from '@/components/ui/Separator'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 
 function safeJson(value: unknown): string {
   try {
@@ -41,6 +41,7 @@ export default function ArtifactPreviewPage() {
 
   const isVideo = String(artifact?.type) === 'VIDEO'
   const isImage = String(artifact?.type) === 'IMAGE'
+  const isHtml = String(artifact?.type) === 'HTML' || (typeof artifact?.content === 'string' && (artifact.content.includes('<html') || artifact.content.includes('<div')))
 
   async function load() {
     if (!jobIdSafe) return
@@ -176,6 +177,14 @@ export default function ArtifactPreviewPage() {
                         : artifact.blobUrl || undefined
                     }
                   />
+                ) : isHtml ? (
+                  <div className="w-full h-[600px] border border-slate-200 rounded-md overflow-hidden bg-white">
+                    <iframe
+                      title="HTML Preview"
+                      className="w-full h-full"
+                      srcDoc={contentSource === 'blob' ? (typeof blobContent === 'string' ? blobContent : safeJson(blobContent)) : (typeof artifact.content === 'string' ? artifact.content : safeJson(artifact.content))}
+                    />
+                  </div>
                 ) : (
                   <pre className="overflow-auto rounded-md bg-slate-900 p-4 text-xs text-slate-100">
                     {safeJson(

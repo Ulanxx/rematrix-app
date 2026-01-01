@@ -233,18 +233,18 @@ export class PromptopsService {
 
   private defaultModel(stage: JobStage) {
     const defaults: Record<JobStage, string> = {
-      PLAN: 'z-ai/glm-4.7',
-      OUTLINE: 'z-ai/glm-4.7',
-      STORYBOARD: 'z-ai/glm-4.7',
-      SCRIPT: 'z-ai/glm-4.7',
-      THEME_DESIGN: 'z-ai/glm-4.7',
-      PAGES: 'z-ai/glm-4.7',
-      TTS: 'z-ai/glm-4.7',
-      RENDER: 'z-ai/glm-4.7',
-      MERGE: 'z-ai/glm-4.7',
-      DONE: 'z-ai/glm-4.7',
+      PLAN: 'google/gemini-3-flash-preview',
+      OUTLINE: 'google/gemini-3-flash-preview',
+      STORYBOARD: 'google/gemini-3-flash-preview',
+      SCRIPT: 'google/gemini-3-flash-preview',
+      THEME_DESIGN: 'google/gemini-3-flash-preview',
+      PAGES: 'google/gemini-3-flash-preview',
+      TTS: 'google/gemini-3-flash-preview',
+      RENDER: 'google/gemini-3-flash-preview',
+      MERGE: 'google/gemini-3-flash-preview',
+      DONE: 'google/gemini-3-flash-preview',
     };
-    return defaults[stage] ?? 'z-ai/glm-4.7';
+    return defaults[stage] ?? 'google/gemini-3-flash-preview';
   }
 
   private defaultPrompt(stage: JobStage) {
@@ -444,7 +444,7 @@ export class PromptopsService {
 
       // 检查模型是否在支持列表中
       const supportedModels = [
-        'z-ai/glm-4.7',
+        'google/gemini-3-flash-preview',
         'anthropic/claude-3.5-sonnet',
         'openai/gpt-4o',
         'openai/gpt-4o-mini',

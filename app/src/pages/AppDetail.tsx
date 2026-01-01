@@ -5,11 +5,11 @@ import { apiClient } from '@/api/client'
 import type { Artifact, GetArtifactsResponse, Job, Stage, ChatMessage, ListChatMessagesResponse } from '@/api/types'
 import { GlassCard } from '@/components/aceternity/GlassCard'
 import AppShell from '@/components/AppShell'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
-import { Separator } from '@/components/ui/Separator'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 
 function getBaseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
@@ -106,15 +106,23 @@ export default function AppDetailPage() {
 
     const userMsg: ChatMessage = {
       id: `u_${Date.now()}`,
+      jobId: jobIdSafe,
       role: 'user',
       content: text,
+      createdAt: new Date().toISOString(),
     }
     const assistantId = `a_${Date.now()}`
 
     setMessages((prev) => [
       ...prev,
       userMsg,
-      { id: assistantId, role: 'assistant', content: '' },
+      { 
+        id: assistantId, 
+        jobId: jobIdSafe, 
+        role: 'assistant', 
+        content: '', 
+        createdAt: new Date().toISOString() 
+      } as ChatMessage,
     ])
     setInput('')
 
@@ -404,13 +412,34 @@ export default function AppDetailPage() {
                             {String(a.type)} · v{a.version}
                           </div>
                         </div>
-                        <Button asChild size="sm" variant="outline" className="border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white">
-                          <Link
-                            to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent(String(a.stage))}/${a.version}`}
-                          >
-                            预览
-                          </Link>
-                        </Button>
+                        <div className="flex gap-2">
+                          {String(a.type) === 'HTML' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white"
+                              onClick={() => {
+                                const content = typeof a.content === 'string' ? a.content : JSON.stringify(a.content, null, 2);
+                                const blob = new Blob([content], { type: 'text/html' });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `ppt-${jobIdSafe}-${String(a.stage)}-v${a.version}.html`;
+                                link.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                            >
+                              下载
+                            </Button>
+                          )}
+                          <Button asChild size="sm" variant="outline" className="border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white">
+                            <Link
+                              to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent(String(a.stage))}/${a.version}`}
+                            >
+                              预览
+                            </Link>
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -440,7 +469,7 @@ export default function AppDetailPage() {
                           {m.role === 'user' ? '你' : '助手'}
                         </div>
                         <div className="whitespace-pre-wrap text-sm text-white/90">
-                          {m.content || (m.role === 'assistant' ? '...' : '')}
+                          {String(m.content || (m.role === 'assistant' ? '...' : ''))}
                         </div>
                         {m.metadata?.type === 'approval_request' && (
                           <div className="mt-2 flex gap-2">

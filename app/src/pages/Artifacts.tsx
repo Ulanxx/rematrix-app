@@ -4,11 +4,11 @@ import { Link, useParams } from 'react-router-dom'
 import { apiClient } from '@/api/client'
 import type { Artifact, GetArtifactsResponse, Stage } from '@/api/types'
 import AppShell from '@/components/AppShell'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
-import { Separator } from '@/components/ui/Separator'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 
 function stageLabel(stage: Stage) {
   return String(stage)

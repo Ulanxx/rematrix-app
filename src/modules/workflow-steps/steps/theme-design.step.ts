@@ -38,7 +38,7 @@ export const themeDesignStep: StepDefinition = createStepDefinition({
 
   // AI 配置
   aiConfig: {
-    model: 'z-ai/glm-4.7',
+    model: 'google/gemini-3-flash-preview',
 
     prompt: `# role
 你是一名专业的演示设计专家，擅长现代视觉设计和用户体验。

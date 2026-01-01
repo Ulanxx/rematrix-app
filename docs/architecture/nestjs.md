@@ -517,7 +517,7 @@ export default () => ({
   
   ai: {
     openrouterApiKey: process.env.OPENROUTER_API_KEY,
-    model: process.env.AI_MODEL || 'z-ai/glm-4.7',
+    model: process.env.AI_MODEL || 'google/gemini-3-flash-preview',
     temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.2,
   },
   
@@ -549,7 +549,7 @@ export const validationSchema = Joi.object({
   TEMPORAL_TASK_QUEUE: Joi.string().default('rematrix-video'),
   
   OPENROUTER_API_KEY: Joi.string().required(),
-  AI_MODEL: Joi.string().default('z-ai/glm-4.7'),
+  AI_MODEL: Joi.string().default('google/gemini-3-flash-preview'),
   AI_TEMPERATURE: Joi.number().min(0).max(2).default(0.2),
   
   BUNNY_STORAGE_ZONE: Joi.string().optional(),

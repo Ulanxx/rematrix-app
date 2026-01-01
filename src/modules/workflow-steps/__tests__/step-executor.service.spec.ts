@@ -73,7 +73,7 @@ describe('StepExecutorService', () => {
       name: 'Test Plan Step',
       description: 'Test step for unit testing',
       aiConfig: {
-        model: 'z-ai/glm-4.7',
+        model: 'google/gemini-3-flash-preview',
 
         prompt: 'Test prompt with <markdown>',
         schema: z.object({ test: z.string() }),
@@ -378,7 +378,7 @@ describe('StepExecutorService', () => {
         name: 'Outline Step',
         description: 'Test outline step',
         aiConfig: {
-          model: 'z-ai/glm-4.7',
+          model: 'google/gemini-3-flash-preview',
 
           prompt: 'Outline prompt <markdown> <plan_json>',
           schema: z.object({ outline: z.string() }),

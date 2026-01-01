@@ -12,13 +12,13 @@ import type {
 } from '@/api/types'
 import { useWebSocket } from '@/lib/hooks/useWebSocket'
 import AppShell from '@/components/AppShell'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Separator } from '@/components/ui/Separator'
+import AutoModeIndicator from '@/components/ui/AutoModeIndicator'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import AutoModeIndicator from '@/components/ui/AutoModeIndicator'
 
 type RunJobResponse = {
   workflowId: string
@@ -446,7 +446,7 @@ export default function JobProcessPage() {
                       <Badge variant="secondary">{a.type}</Badge>
                       <Badge variant="outline">v{a.version}</Badge>
                     </div>
-                    <div className="mt-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <Button asChild variant="outline" size="sm">
                         <Link
                           to={`/jobs/${encodeURIComponent(jobIdSafe)}/artifacts/${encodeURIComponent(String(a.stage))}/${a.version}`}
@@ -454,10 +454,27 @@ export default function JobProcessPage() {
                           预览
                         </Link>
                       </Button>
+                      {String(a.type) === 'HTML' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const content = typeof a.content === 'string' ? a.content : JSON.stringify(a.content, null, 2);
+                            const blob = new Blob([content], { type: 'text/html' });
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = `ppt-${jobIdSafe}-${String(a.stage)}-v${a.version}.html`;
+                            link.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                        >
+                          下载
+                        </Button>
+                      )}
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        className="ml-2"
                         onClick={() => void rerunStage(String(a.stage))}
                         disabled={rerunningStage === String(a.stage)}
                       >
